@@ -1,0 +1,86 @@
+
+Data Scientist 
+Morningstar • Chicago, IL • via Morningstar Jobs 
+Qualifications 
+●  We are looking for an individual who possesses strong technical development skills, an 
+ability to follow analyst requirements and technical specifications for robust code, and a 
+passion for investment research 
+●  Candidates must be currently authorized to work Permanently in the United States - this 
+position does not sponsor H-1B Visa 
+●  No minimal industrial experience is required, if you have a Ph.D. degree in engineering, 
+computer science, statistics or related field 
+●  Must demonstrate ML/AI knowledge and skills through research and/or side-projects in 
+NLP related fields, if you have no prior industrial experience 
+●  Must have 2+ years of industrial experience in a data science role featuring NLP tasks, if 
+you have a master’s degree or below 
+●  Fluent with Python and related packages like NumPy, pandas, scikit-learn, NLTK, PyTorch, 
+TensorFlow, etc 
+●  Sound knowledge of common ML/AI algorithms (e.g., linear/logistic regression, random 
+forest, gradient boosting) and Deep Learning algorithms in particular (e.g., transformers, 
+BERT, open-source LLMs) 
+●  Experience with SQL 
+●  Great communication and presentation skills 
+●  Able to work independently and being proactive 
+●  Experience with DevOps tools (e.g 
+●  Familiarity with common data cleaning and munging techniques 
+●  Familiarity with data visualization 
+●  Familiarity with statistical methods, e.g., linear/logistic regression, optimization 
+Benefits 
+●  Compensation and Benefits 
+●  Financial Health 
+●  75% 401k match up to 7% 
+●  Stock Ownership Potential 
+●  Company provided life insurance - 1x salary + commission 
+●  Comprehensive health benefits (medical/dental/vision) including potential premium 
+discounts and company-provided HSA contributions (up to $500-$2,000 annually) for 
+specific plans and coverages 
+●  Additional medical Wellness Incentives - up to $300-$600 annual 
+●  Company-provided long- and short-term disability insurance 
+●  Emotional Health 
+●  Trust-Based Time Off 
+●  6-week Paid Sabbatical Program 
+●  6-Week Paid Family Caregiving Leave 
+●  Competitive 8-24 Week Paid Parental Bonding Leave 
+●  Adoption Assistance 
+●  Leadership Coaching & Formal Mentorship Opportunities 
+●  Annual Education Stipend 
+●  Tuition Reimbursement 
+●  Social Health 
+●  Charitable Matching Gifts program 
+●  Dollars for Doers volunteer program 
+●  Paid volunteering days 
+●  15+ Employee Resource & Affinity Groups 
+●  Base Salary Compensation Range 
+●  $79,091.00 - 134,455.00 USD Annual 
+●  Total Cash Compensation Range 
+●  $87,000.00 - 147,900.00 USD Annual 
+●  Morningstar’s hybrid work environment gives you the opportunity to work remotely and 
+collaborate in-person each week 
+●  No matter where you are, you’ll have tools and resources to engage meaningfully with your 
+global colleagues 
+Responsibilities 
+●  As a Data Scientist, you will be a leading contributor in the implementation of Artificial 
+Intelligence (AI) within Data Collections software applications, API’s, and other data 
+products 
+●  This role requires significant interaction with both upstream and downstream 
+stakeholders across Technology, Data, Products, Sales/Service, and Research 
+●  The Data Scientist will transition approved Data Collections AI products from a prototype 
+phase to a scalable and consumable service 
+●  Often, these services must be integrated into Morningstar’s platform of financial products, 
+so that our clients can use these software tools in the investment decision-making 
+process 
+●  Automate manual data collection processes by applying cutting-edge solutions to tackle 
+NLP problems, e.g., text classification, NER tasks 
+●  Collaborate with upstream data analysts to clarify business needs, define project scope, 
+design ML/AI solutions, and iteratively improve workflows and data storage practices 
+●  Implement ML/AI solutions from start to finish and collaborate with peer engineering 
+teams for model deployment 
+●  Design innovative ways to improve automation rates for data collection 
+●  Research on latest technologies and propose new solutions to existing problems 
+●  Participate in team brainstorming sessions, provide guidance to MLDAs (machine learning 
+data analysts), and contribute to the codebase 
+●  Introduce and follow good development practices, innovative frameworks and technology 
+solutions 
+●  Follow best practices like estimation, planning, reporting and improvement brought to 
+processes in daily work 
+...
