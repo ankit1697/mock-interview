@@ -4,6 +4,7 @@ from openai import OpenAI
 from dotenv import load_dotenv
 import os
 from utils import read_file
+from difflib import SequenceMatcher
 
 load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -13,10 +14,11 @@ jd_path = "jd.txt"
 resume = read_file(resume_path)
 job_description = read_file(jd_path)
 
+# Prepare messages for the initial question
 messages = [
     {"role": "system", "content": "You are an expert AI interviewer for data science roles."},
     {"role": "user", "content": f"""
-Given the resume and job description below, generate 5 thoughtful and role-specific interview questions.
+Given the resume and job description below, generate 1 thoughtful and role-specific interview question.
 
 Resume:
 {resume}
@@ -33,30 +35,64 @@ response = client.chat.completions.create(
 )
 end = time.time()
 
-initial_questions = response.choices[0].message.content
-print("\n Initial Questions:")
-print(initial_questions)
-print(f" Took {round(end - start, 2)} seconds\n")
+initial_question = response.choices[0].message.content
+print("\nInitial Question:")
+print(initial_question)
+print(f"Took {round(end - start, 2)} seconds\n")
 
-messages.append({"role": "assistant", "content": initial_questions})
+# Store messages to continue conversation
+messages.append({"role": "assistant", "content": initial_question})
 
-while True:
-    user_input = input(" Your Answer (or type 'exit'): ")
-    if user_input.lower() == "exit":
-        break
-
-    messages.append({"role": "user", "content": user_input})
-    messages.append({"role": "system", "content": "Ask one thoughtful follow-up question based on the user's answer."})
-
+# Function to generate side-by-side follow-up questions (only created once after the first question)
+def generate_side_by_side_questions():
+    messages.append({"role": "user", "content": f"""
+Based on the initial interview question generated above, generate 3 additional follow-up questions that are related to those questions.
+"""})
+    
     start = time.time()
     followup_response = client.chat.completions.create(
         model="gpt-4o",
         messages=messages
     )
     end = time.time()
+    
+    side_by_side_questions = followup_response.choices[0].message.content
+    return side_by_side_questions.strip().split('\n')
 
-    followup_question = followup_response.choices[0].message.content
-    print(f"\n Follow-up Question: {followup_question}")
-    print(f" Took {round(end - start, 2)} seconds\n")
+# Initialize the side-by-side questions after the first question is asked
+side_by_side_questions = generate_side_by_side_questions()
 
-    messages.append({"role": "assistant", "content": followup_question})
+# Function to find the closest match from the side-by-side questions based on user input
+def get_closest_match(input_text, question_list):
+    similarities = [(question, SequenceMatcher(None, input_text, question).ratio()) for question in question_list]
+    closest_match = max(similarities, key=lambda x: x[1])
+    return closest_match[0]
+
+# Loop for dynamic follow-up after the user's response
+while True:
+    user_input = input("Your Answer (or type 'exit'): ")
+    if user_input.lower() == "exit":
+        break
+
+    messages.append({"role": "user", "content": user_input})
+
+    # Compare the user's response to the side-by-side questions and get the closest match
+    closest_question = get_closest_match(user_input, side_by_side_questions)
+
+    # Ask the most relevant follow-up question based on the user's response
+    messages.append({"role": "system", "content": f"""
+Provide the most logical follow-up question based on the user response: "{closest_question}"
+"""})
+
+    start = time.time()
+    closest_answer_response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=messages
+    )
+    end = time.time()
+
+    closest_answer = closest_answer_response.choices[0].message.content
+    print(f"\nFollow-Up Answer: {closest_answer}")
+    print(f"Took {round(end - start, 2)} seconds\n")
+
+    messages.append({"role": "assistant", "content": closest_answer})
