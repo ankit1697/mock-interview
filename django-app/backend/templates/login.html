@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login</title>
+</head>
+<body>
+    <h2>Login</h2>
+
+    {% load socialaccount %}
+
+    <!-- Google login button -->
+    <a href="{% provider_login_url 'google' %}?next=/">
+        <button>Login with Google</button>
+    </a>
+</body>
+</html>

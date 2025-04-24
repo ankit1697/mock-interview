@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-2xl mx-auto bg-white shadow-md rounded p-6">
+  <h2 class="text-xl font-bold mb-4">AI Interview</h2>
+
+  <div id="chatBox" class="space-y-4 max-h-[500px] overflow-y-auto mb-6 border p-4 rounded bg-gray-50"></div>
+
+  <form id="chatForm" method="POST" class="flex gap-4">
+    {% csrf_token %}
+    <input type="text" name="message" id="messageInput" placeholder="Type your answer..." autocomplete="off"
+           class="flex-1 border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500">
+    <button class="bg-orange-500 text-white px-4 py-2 rounded hover:bg-orange-600">Send</button>
+  </form>
+</div>
+
+<script>
+  const form = document.getElementById("chatForm");
+  const input = document.getElementById("messageInput");
+  const chatBox = document.getElementById("chatBox");
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const message = input.value;
+    input.value = "";
+
+    chatBox.innerHTML += `<div class="text-right"><div class="inline-block bg-gray-200 px-4 py-2 rounded">${message}</div></div>`;
+    chatBox.scrollTop = chatBox.scrollHeight;
+
+    const response = await fetch("", {
+      method: "POST",
+      headers: {
+        "X-CSRFToken": "{{ csrf_token }}",
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: new URLSearchParams({ message })
+    });
+
+    const data = await response.json();
+    chatBox.innerHTML += `<div><div class="inline-block bg-blue-100 px-4 py-2 rounded">${data.response}</div></div>`;
+    chatBox.scrollTop = chatBox.scrollHeight;
+  });
+</script>
+
+
+<script>
+  // Trigger first question automatically when page loads
+  window.addEventListener("DOMContentLoaded", async () => {
+    const chatBox = document.getElementById("chatBox");
+
+    // Trigger a POST request with a dummy message
+    const response = await fetch("", {
+      method: "POST",
+      headers: {
+        "X-CSRFToken": "{{ csrf_token }}",
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: new URLSearchParams({ message: "__start__" })  // <- Dummy initial trigger
+    });
+
+    const data = await response.json();
+    chatBox.innerHTML += `<div><div class="inline-block bg-blue-100 px-4 py-2 rounded">${data.response}</div></div>`;
+    chatBox.scrollTop = chatBox.scrollHeight;
+  });
+</script>
+
+{% endblock %}

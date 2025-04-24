@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block content %}
+{% load static %}
+
+<div class="flex">
+<aside class="h-screen sticky top-16 border-r shadow-sm hidden md:flex flex-col justify-between bg-white sidenav w-64">
+  
+  <!-- Top Links -->
+  <div>
+    <!-- Profile Tab -->
+    <div class="flex items-center gap-2 px-4 py-4 bg-white border-r-4 sidenav-active-item">
+      <img src="{% static 'backend/images/profile.png' %}" alt="Profile" class="w-5 h-auto" />
+      <span class="sidenav-active-text font-semibold">Profile</span>
+    </div>
+
+    <!-- Performance Dashboard -->
+    <div class="flex items-center gap-2 px-4 py-4 hover:bg-gray-100 cursor-pointer">
+      <img src="{% static 'backend/images/dashboard.png' %}" alt="Dashboard" class="w-5 h-auto" />
+      <span class="text-gray-700">Performance Dashboard</span>
+    </div>
+
+    <!-- Past Interviews -->
+    <div class="flex items-center gap-2 px-4 py-4 hover:bg-gray-100 cursor-pointer">
+      <img src="{% static 'backend/images/past.png' %}" alt="Past" class="w-5 h-auto" />
+      <span class="text-gray-700">Past Interviews</span>
+    </div>
+  </div>
+
+  <!-- Bottom Logout -->
+  <div class="p-4">
+    <a href="{% url 'account_logout' %}" 
+       onclick="return confirm('Are you sure you want to log out?');"
+       class="flex items-center gap-2 text-red-600 hover:text-red-800 transition">
+      <img src="{% static 'backend/images/logout.png' %}" alt="Logout" class="w-4 h-4" />
+      Logout
+    </a>
+
+  </div>
+
+</aside>
+
+
+
+  <!-- 🔹 Main Content -->
+  <div class="flex-1 p-6">
+
+    <!-- 🔹 Header Row: Title + Upload Button -->
+<div class="flex items-center justify-between mb-8">
+  <h2 class="text-2xl font-bold">My Resumes</h2>
+
+  <!-- Upload Form -->
+  <form method="POST" enctype="multipart/form-data" id="resumeUploadForm" class="rounded-lg">
+    {% csrf_token %}
+    <input type="file" name="file" id="resumeFileInput" class="hidden" onchange="document.getElementById('resumeUploadForm').submit();">
+
+    <label for="resumeFileInput" class="inline-block bg-orange-500 px-6 py-2 rounded cursor-pointer hover:bg-orange-600 transition">
+      Upload Resume
+    </label>
+  </form>
+</div>
+
+
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {% for resume in resumes %}
+      <div class="bg-white shadow-sm border rounded-lg p-4 flex flex-col justify-between {% if resume.is_preferred %}resume_preferred{% endif %}">
+        
+        <!-- Resume File Name -->
+        <div class="mb-4">
+          <h3 class="font-semibold">{{ resume.file.name|cut:'resumes/' }}</h3>
+          <h4 class="mt-4">Uploaded On: {{resume.uploaded_at|date}}</h4>
+        </div>
+
+        <div class="mt-auto flex justify-between items-center pt-4">
+          <a href="{{ resume.file.url }}" target="_blank" class="hover:underline">View</a>
+
+          {% if not resume.is_preferred %}
+          <form method="post" action="{% url 'set_preferred_resume' resume.id %}">
+            {% csrf_token %}
+            <button class="hover:underline">Set Preferred</button>
+          </form>
+          {% else %}
+          <span class="text-gray-500 text-sm">Preferred</span>
+          {% endif %}
+
+          <form method="post" action="{% url 'delete_resume' resume.id %}">
+            {% csrf_token %}
+            <button class="hover:underline">Delete</button>
+          </form>
+        </div>
+
+      </div>
+      {% endfor %}
+    </div>
+
+  </div>
+</div>
+
+{% endblock %}

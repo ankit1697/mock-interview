@@ -1,0 +1,40 @@
+{% load static %}
+{% load socialaccount %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>AI Mock Interview Platform</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="{% static 'backend/css/style.css' %}">
+</head>
+<body class="bg-gray-50">
+
+  <nav class="top-0 left-0 right-0 z-50 nav-fixed">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex justify-between items-center h-16">
+        <div class="flex items-center">
+          <a href='/'><span class="text-xl font-bold">Prep.AI</span></a>
+        </div>
+        <div class="flex items-center space-x-6">
+      {% if user.is_authenticated %}
+        <a href="{% url 'setup_interview' %}" class="nav-link">Mock Interview</a>
+        <a href="/profile" class="nav-link">Dashboard</a>
+        <a href="{% url 'profile' %}" class="nav-link">Profile</a>
+        <a href="{% url 'account_logout' %}" class="nav-link">Logout</a>
+      {% else %}
+        <a href="/accounts/google/login/?process=login&next=/" class="btn-main text-black px-4 py-2 rounded">Login with Google</a>
+      {% endif %}
+    </div>
+      </div>
+    </div>
+  </nav>
+  <!-- Main Content -->
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+
+</body>
+</html>
