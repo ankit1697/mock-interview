@@ -114,7 +114,6 @@ def setup_interview(request):
 
 
 
-# Global store to keep interview sessions alive per user-interview
 active_sessions = {}
 
 def extract_text_from_pdf(path):
@@ -148,30 +147,42 @@ def interview_chat(request, interview_id):
 	        greeting_and_first_q = session.start_interview()
 	        return JsonResponse({"response": greeting_and_first_q})
 
-	    # Otherwise, process user's answer
+	    # First: Add user's answer
 	    feedback_or_next_question, note = session.add_answer(user_message)
 
 	    if note == "Question clarified.":
 	        return JsonResponse({"response": feedback_or_next_question})
 
-	    # Only move to next question if interview not over
+	    # Now carefully handle moving to the next step
 	    next_question = session.next_question()
 
+	    # 🛠 NEW LOGIC: if interview ended
 	    if "end of your interview" in next_question.lower():
-	        # 🛠 Before saving, make sure to store the last answer too!
 	        if session.interview_data[-1]["answer"] is None:
 	            session.interview_data[-1]["answer"] = user_message
 	            session.interview_data[-1]["evaluation"] = feedback_or_next_question
 
-	        # Now safe to save the transcript
-	        CompletedInterview.objects.create(
+	        overall_summary = session.get_interview_summary()
+
+	        completed_interview = CompletedInterview.objects.create(
 	            interview=interview,
 	            user=request.user,
-	            transcript=json.dumps(session.interview_data, indent=2)
+	            transcript=json.dumps(session.interview_data, indent=2),
+	            summary=overall_summary
 	        )
 	        active_sessions.pop(session_key, None)
 
-	    return JsonResponse({"response": next_question})
+	        return JsonResponse({
+	            "response": next_question,
+	            "completed_id": completed_interview.id
+	        })
+
+	    # 🛠 Important: otherwise return NEXT QUESTION cleanly
+	    return JsonResponse({
+	        "response": next_question
+	    })
+
+
 
 
 	return render(request, "interview_chat.html", {"interview": interview})
@@ -182,6 +193,21 @@ def past_interviews(request):
     completed_interviews = CompletedInterview.objects.filter(user=request.user).select_related('interview').order_by('-completed_at')
     return render(request, "past_interviews.html", {"completed_interviews": completed_interviews})
 
+
+@login_required
+def interview_feedback(request, completed_id):
+    completed = get_object_or_404(CompletedInterview, id=completed_id, user=request.user)
+
+    # Parse the transcript (it was saved as JSON text)
+    try:
+        transcript = json.loads(completed.transcript)
+    except Exception:
+        transcript = []
+
+    return render(request, "interview_feedback.html", {
+        "completed": completed,
+        "transcript": transcript
+    })
 
 
 ##################### OLD WORKING LOGIC #######################

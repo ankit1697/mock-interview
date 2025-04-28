@@ -59,7 +59,8 @@ class Interview(models.Model):
 class CompletedInterview(models.Model):
 	interview = models.OneToOneField('Interview', on_delete=models.CASCADE)
 	user = models.ForeignKey(User, on_delete=models.CASCADE)
-	transcript = models.TextField()  # JSON or plain text
+	transcript = models.TextField()
+	summary = models.TextField(null=True, blank=True)
 	completed_at = models.DateTimeField(auto_now_add=True)
 
 	def __str__(self):

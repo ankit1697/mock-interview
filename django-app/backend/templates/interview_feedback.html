@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="container mt-6">
+    <h2 class="text-2xl font-bold mb-6">Interview at {{ completed.interview.company }}</h2>
+
+    <!-- Summary Section -->
+    <div class="mb-8 p-4 bg-gray-100 rounded-lg">
+        <h3 class="text-xl font-semibold mb-2">Overall Summary</h3>
+        <p class="text-gray-700 whitespace-pre-line">{{ completed.summary }}</p>
+    </div>
+
+    <!-- Transcript Section -->
+    <div>
+        <h3 class="text-xl font-semibold mb-4">Detailed Q&A</h3>
+
+        {% if transcript %}
+            <div class="space-y-6">
+                {% for qa in transcript %}
+                    <div class="border p-4 rounded-lg bg-white shadow-sm">
+                        <p><strong>Question {{ forloop.counter }}:</strong> {{ qa.question }}</p>
+                        <p class="mt-2"><strong>Answer:</strong> {{ qa.answer }}</p>
+                        <p class="mt-2"><strong>Evaluation:</strong> {{ qa.evaluation }}</p>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p>No transcript data available.</p>
+        {% endif %}
+    </div>
+
+    <div class="mt-8">
+        <a href="{% url 'past_interviews' %}" class="btn btn-secondary">← Back to Past Interviews</a>
+    </div>
+</div>
+
+{% endblock %}

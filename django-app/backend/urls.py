@@ -10,6 +10,6 @@ urlpatterns = [
     path('interview/setup/', setup_interview, name='setup_interview'),
     path("interview/chat/<int:interview_id>/", interview_chat, name="interview_chat"),
     path('profile/past-interviews/', past_interviews, name='past_interviews'),
-    path('past-interview/<int:completed_id>/', past_interviews, name='past_interview_detail'),
+    path('interview/feedback/<int:completed_id>/', interview_feedback, name='interview_feedback'),
 
 ]
