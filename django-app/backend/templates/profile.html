@@ -20,10 +20,10 @@
     </div>
 
     <!-- Past Interviews -->
-    <div class="flex items-center gap-2 px-4 py-4 hover:bg-gray-100 cursor-pointer">
+    <a href="{% url 'past_interviews' %}"><div class="flex items-center gap-2 px-4 py-4 hover:bg-gray-100 cursor-pointer">
       <img src="{% static 'backend/images/past.png' %}" alt="Past" class="w-5 h-auto" />
       <span class="text-gray-700">Past Interviews</span>
-    </div>
+    </div></a>
   </div>
 
   <!-- Bottom Logout -->
@@ -40,18 +40,15 @@
 </aside>
 
 
-
-  <!-- 🔹 Main Content -->
   <div class="flex-1 p-6">
-
-    <!-- 🔹 Header Row: Title + Upload Button -->
 <div class="flex items-center justify-between mb-8">
   <h2 class="text-2xl font-bold">My Resumes</h2>
 
   <!-- Upload Form -->
   <form method="POST" enctype="multipart/form-data" id="resumeUploadForm" class="rounded-lg">
     {% csrf_token %}
-    <input type="file" name="file" id="resumeFileInput" class="hidden" onchange="document.getElementById('resumeUploadForm').submit();">
+    <!-- <input type="file" name="file" id="resumeFileInput" class="hidden" onchange="document.getElementById('resumeUploadForm').submit();"> -->
+    <input type="file" name="file" id="resumeFileInput" class="hidden">
 
     <label for="resumeFileInput" class="inline-block bg-orange-500 px-6 py-2 rounded cursor-pointer hover:bg-orange-600 transition">
       Upload Resume
@@ -95,5 +92,30 @@
 
   </div>
 </div>
+
+<!-- Loader Overlay -->
+<div id="resume-loader" class="hidden fixed inset-0 z-50 bg-white/80 flex flex-col items-center justify-center">
+  <img src="{% static 'backend/images/paper_icon.png' %}" 
+       class="w-16 h-16 animate-rotate-paper" 
+       alt="Rotating Paper" />
+
+  <p class="mt-4 text-lg text-gray-700 font-semibold">Parsing your resume...</p>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    const fileInput = document.getElementById('resumeFileInput');
+    const uploadForm = document.getElementById('resumeUploadForm');
+    const loader = document.getElementById('resume-loader');
+
+    if (fileInput && uploadForm && loader) {
+      fileInput.addEventListener('change', function () {
+        loader.classList.remove('hidden');
+        uploadForm.submit();
+      });
+    }
+  });
+</script>
+
 
 {% endblock %}

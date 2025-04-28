@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+
+<div class="flex">
+<aside class="h-screen sticky top-16 border-r shadow-sm hidden md:flex flex-col justify-between bg-white sidenav w-64">
+  
+  <!-- Top Links -->
+  <div>
+    <!-- Profile Tab -->
+    <a href="{% url 'profile' %}"><div class="flex items-center gap-2 px-4 py-4 hover:bg-gray-100 bg-white border-r-4">
+      <img src="{% static 'backend/images/profile.png' %}" alt="Profile" class="w-5 h-auto" />
+      <span class="text-gray-700">Profile</span>
+    </div></a>
+
+    <!-- Performance Dashboard -->
+    <div class="flex items-center gap-2 px-4 py-4 hover:bg-gray-100 cursor-pointer">
+      <img src="{% static 'backend/images/dashboard.png' %}" alt="Dashboard" class="w-5 h-auto" />
+      <span class="text-gray-700">Performance Dashboard</span>
+    </div>
+
+    <!-- Past Interviews -->
+    <a href="{% url 'past_interviews' %}"><div class="flex items-center gap-2 px-4 py-4 bg-white border-r-4 sidenav-active-item">
+      <img src="{% static 'backend/images/past.png' %}" alt="Past" class="w-5 h-auto" />
+      <span class="sidenav-active-text font-semibold">Past Interviews</span>
+    </div></a>
+  </div>
+
+  <!-- Bottom Logout -->
+  <div class="p-4">
+    <a href="{% url 'account_logout' %}" 
+       onclick="return confirm('Are you sure you want to log out?');"
+       class="flex items-center gap-2 text-red-600 hover:text-red-800 transition">
+      <img src="{% static 'backend/images/logout.png' %}" alt="Logout" class="w-4 h-4" />
+      Logout
+    </a>
+
+  </div>
+
+</aside>
+
+
+  <div class="flex-1 p-6">
+
+<div class="flex items-center justify-between mb-8">
+  <h2 class="text-2xl font-bold">Past Interviews</h2>
+</div>
+
+
+
+    <div class="grid grid-cols-1 md:grid-cols-1 gap-6">
+    {% if completed_interviews %}
+        {% for completed in completed_interviews %}
+          <div class="border rounded-lg shadow-sm p-6 flex flex-col justify-between h-48 bg-white resume_preferred">
+            <!-- Top section -->
+            <div class="flex justify-between items-start">
+              <h3 class="text-2xl font-semibold">{{ completed.interview.company }}</h3>
+              <p class="text-lg text-gray-500">{{ completed.completed_at|date:"M d, Y" }}</p>
+            </div>
+
+            <p class="mt-2 text-gray-700">
+              {{ completed.interview.get_interview_type_display }}
+            </p>
+
+            <div class="flex justify-end mt-auto">
+              <a href="{% url 'past_interview_detail' completed.id %}" class="text-white font-medium py-2 px-4 rounded-lg text-sm" id="resumeUploadForm">
+                View Feedback
+              </a>
+            </div>
+          </div>
+        {% endfor %}
+    {% else %}
+        <p>No completed interviews yet. Start one now!</p>
+    {% endif %}
+    </div>
+
+
+  </div>
+</div>
+{% endblock %}

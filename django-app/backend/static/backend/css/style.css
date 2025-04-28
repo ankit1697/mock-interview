@@ -68,3 +68,16 @@
 .form-submit-btn:hover {
 	background-color: rgba(255,157,0, 0.9) !important;
 }
+
+
+@keyframes rotate-paper {
+  0%   { transform: rotate(0deg); }
+  25%  { transform: rotate(-10deg); }
+  50%  { transform: rotate(0deg); }
+  75%  { transform: rotate(10deg); }
+  100% { transform: rotate(0deg); }
+}
+
+.animate-rotate-paper {
+  animation: rotate-paper 2s ease-in-out infinite;
+}
