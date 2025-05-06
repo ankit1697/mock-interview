@@ -131,7 +131,8 @@ def interview_chat(request, interview_id):
 	if not session:
 		resume = interview.resume
 		job_description_text = interview.job_description or "N/A"
-		session = InterviewSession(resume, job_description_text)
+		company = interview.company or "N/A"
+		session = InterviewSession(resume, job_description_text, company)
 		active_sessions[session_key] = session
 
 	# (rest of your POST handling and render remains same!)

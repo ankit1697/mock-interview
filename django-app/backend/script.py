@@ -377,9 +377,10 @@ def generate_dynamic_question(messages, user_response, personal_profile=None):
 
 
 class InterviewSession:
-    def __init__(self, resume_obj, job_description_text):
+    def __init__(self, resume_obj, job_description_text, company=None):
         self.resume_obj = resume_obj  # Save the Resume object
         self.job_description_text = job_description_text or "N/A"
+        self.company = company or "N/A"
 
         self.structured_resume = {
             "contact_info": {
@@ -411,7 +412,7 @@ class InterviewSession:
 
 
     def start_interview(self):
-        greeting = f"Hi {self.personal_profile.get('name', 'there')}, nice to meet you! Let's get started with your interview for the {self.personal_profile.get('role', 'data science')} role at {self.personal_profile.get('company', 'the company')}"
+        greeting = f"Hi {self.personal_profile.get('name', 'there')}, nice to meet you! Let's get started with your interview for the {self.personal_profile.get('role', 'data science')} role at {self.company}"
         initial_question, self.messages = generate_initial_question(self.structured_resume, self.structured_jd)
         self.current_question = initial_question
         self.interview_data.append({"question": initial_question, "answer": None, "evaluation": None})
