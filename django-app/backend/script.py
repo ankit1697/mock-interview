@@ -269,7 +269,7 @@ def generate_initial_question(structured_resume, structured_jd):
             } for edu in structured_resume.get("education", [])
         ],
         "skills": structured_resume.get("skills", {}),
-        "projects": [proj.get("name", "") for proj in structured_resume.get("projects", [])[:3]]
+        "projects": [proj.get("name", "") for proj in structured_resume.get("projects") or []][:3]
     }
 
     jd_summary = {
