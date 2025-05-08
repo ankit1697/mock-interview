@@ -297,7 +297,7 @@ STRUCTURED JOB DESCRIPTION:
 {jd_json}
 
 Guidelines for your question:
-1. Be specific to the candidate's background and the job requirements
+1. Use the candidate's background and the job requirements
 2. Focus on technical knowledge and practical application
 3. Target skills or experiences that appear most relevant for this role
 4. Keep the question under 30 words and end with a question mark
@@ -322,8 +322,8 @@ Guidelines for your question:
     return initial_question, messages
 
 
-def generate_dynamic_question(messages, user_response, personal_profile=None):
-    """Generate a dynamic follow-up question based on the user's response"""
+def generate_dynamic_question(messages, user_response, personal_profile=None, interview_type="general"):
+    """Generate a dynamic follow-up question based on the user's response and interview type"""
     # Add the user's response to the conversation
     messages.append({"role": "user", "content": user_response})
 
@@ -344,22 +344,38 @@ def generate_dynamic_question(messages, user_response, personal_profile=None):
         - Background: {', '.join(personal_profile.get('domain_expertise', []))}
         """
 
+    # Base instruction for all interview types
+    base_instruction = """
+        Generate a thoughtful follow-up question based on the candidate's response.
+        The question can:
+        1. Be no longer than 30 words
+        2. End with a question mark
+        3. Be conversational but technically substantive
+        4. Dig deeper into a specific aspect mentioned by the candidate, but not necessarily!
+
+    """
+
+    # Add technical interview specific instruction if needed
+    if interview_type.lower() == "technical":
+        base_instruction += """
+        5. Ask precise data science technical questions that have a specific answer that can be evaluated (ex: explain a concept...)
+        6. Don't hesitate to ask questions that are completely unrelated with the previous conversation (you can ask like boosting vs bagging or any other common data science question with a fixed answer)
+        7. Ask no more than 1 question which is not a data science classic interview question that could be asked regardless of the background
+        """
+
     system_message = {
         "role": "system",
         "content": f"""
             You are an expert technical interviewer for data science roles.
             {profile_context}
-            Generate a thoughtful follow-up question based on the candidate's response.
-            The question should:
-            1. Dig deeper into a specific aspect mentioned by the candidate
-            2. Be conversational but technically substantive
-            3. Be no longer than 30 words
-            4. End with a question mark
+            {base_instruction}
         """
     }
 
     # Create a new messages array with the system message first
     formatted_messages = [system_message] + messages
+
+    print(base_instruction)
 
     start = time.time()
     response = client.chat.completions.create(
@@ -509,7 +525,7 @@ class InterviewSession:
         )
         return 'no' in check_response.choices[0].message.content.lower()
 
-    def next_question(self):
+    def next_question(self, interview_type):
         if self.total_questions_asked >= 5:
             return "We've reached the end of your interview. Thank you for your time!"
 
@@ -521,7 +537,7 @@ class InterviewSession:
                 self.messages.append({"role": "user", "content": last_q["answer"]})
 
         if self.follow_up_count < 3 and self.should_ask_follow_up(self.interview_data[self.current_question_idx - 1]["answer"]):
-            next_q = generate_dynamic_question(self.messages.copy(), self.interview_data[self.current_question_idx - 1]["answer"], self.personal_profile)
+            next_q = generate_dynamic_question(self.messages.copy(), self.interview_data[self.current_question_idx - 1]["answer"], self.personal_profile, interview_type)
             self.follow_up_count += 1
         else:
             next_q, _ = generate_initial_question(self.structured_resume, self.structured_jd)

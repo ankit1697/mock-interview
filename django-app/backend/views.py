@@ -124,6 +124,7 @@ def extract_text_from_pdf(path):
 @csrf_exempt
 def interview_chat(request, interview_id):
 	interview = get_object_or_404(Interview, id=interview_id, user=request.user)
+	interview_type = interview.interview_type
 
 	session_key = f"session_{request.user.id}_{interview_id}"
 	session = active_sessions.get(session_key)
@@ -155,7 +156,7 @@ def interview_chat(request, interview_id):
 	        return JsonResponse({"response": feedback_or_next_question})
 
 	    # Now carefully handle moving to the next step
-	    next_question = session.next_question()
+	    next_question = session.next_question(interview_type)
 
 	    # 🛠 NEW LOGIC: if interview ended
 	    if "end of your interview" in next_question.lower():
