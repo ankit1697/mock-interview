@@ -9,53 +9,182 @@
     {% csrf_token %}
     <input type="text" name="message" id="messageInput" placeholder="Type your answer..." autocomplete="off"
            class="flex-1 border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500">
-    <button class="bg-orange-500 text-white px-4 py-2 rounded hover:bg-orange-600">Send</button>
+    <button type="submit" class="bg-orange-500 text-white px-4 py-2 rounded hover:bg-orange-600">Send</button>
   </form>
+
+  <!-- Voice Interface -->
+  <div class="mt-4 flex items-center gap-4">
+    <button id="recordButton" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+      <i class="fas fa-microphone mr-2"></i>Record Answer
+    </button>
+    <button id="stopButton" disabled class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600">
+      <i class="fas fa-stop mr-2"></i>Stop
+    </button>
+    <div id="recordingStatus" class="hidden text-red-500">
+      <i class="fas fa-circle animate-pulse mr-2"></i>Recording...
+    </div>
+  </div>
 </div>
 
-
 <script>
-  // Trigger first question automatically when page loads
-  window.addEventListener("DOMContentLoaded", async () => {
+// Voice recording functionality
+let mediaRecorder;
+let audioChunks = [];
+const recordButton = document.getElementById('recordButton');
+const stopButton = document.getElementById('stopButton');
+const recordingStatus = document.getElementById('recordingStatus');
+const chatBox = document.getElementById('chatBox');
+const messageInput = document.getElementById('messageInput');
+
+recordButton.addEventListener('click', async () => {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        
+        mediaRecorder.ondataavailable = (e) => {
+            if (e.data.size > 0) {
+                audioChunks.push(e.data);
+            }
+        };
+        
+        mediaRecorder.onstop = async () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            await sendAudioToServer(audioBlob);
+            audioChunks = [];
+        };
+        
+        mediaRecorder.start(100); // Collect data every 100ms
+        recordButton.disabled = true;
+        stopButton.disabled = false;
+        recordingStatus.classList.remove('hidden');
+    } catch (error) {
+        console.error('Error accessing microphone:', error);
+        alert('Could not access microphone. Please check permissions.');
+    }
+});
+
+stopButton.addEventListener('click', () => {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+        stopButton.disabled = true;
+        recordingStatus.classList.add('hidden');
+        recordButton.disabled = false;
+        
+        // Stop all tracks
+        mediaRecorder.stream.getTracks().forEach(track => track.stop());
+    }
+});
+
+async function sendAudioToServer(audioBlob) {
+    const formData = new FormData();
+    formData.append('audio', audioBlob, 'recording.webm');
+    formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+
+    try {
+        const response = await fetch('', {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+        
+        if (data.error) {
+            throw new Error(data.error);
+        }
+
+        // Display user's transcribed message
+        if (data.transcript) {
+            chatBox.innerHTML += `
+                <div class="text-right">
+                    <div class="inline-block bg-gray-200 px-4 py-2 rounded">
+                        ${data.transcript}
+                    </div>
+                </div>`;
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        // Display AI response
+        if (data.response) {
+            chatBox.innerHTML += `
+                <div>
+                    <div class="inline-block bg-blue-100 px-4 py-2 rounded">
+                        ${data.response}
+                    </div>
+                </div>`;
+            chatBox.scrollTop = chatBox.scrollHeight;
+            
+            // Play audio response if available
+            if (data.audio) {
+                const audio = new Audio(`data:audio/mpeg;base64,${data.audio}`);
+                audio.play();
+            }
+        }
+
+        // Handle interview completion
+        if (data.completed_id) {
+            chatBox.innerHTML += `
+                <div class="text-green-600 mt-4">
+                    Redirecting you to detailed feedback...
+                </div>`;
+            chatBox.scrollTop = chatBox.scrollHeight;
+            
+            setTimeout(() => {
+                window.location.href = `/interview/feedback/${data.completed_id}/`;
+            }, 1500);
+        }
+
+    } catch (error) {
+        console.error('Error:', error);
+        chatBox.innerHTML += `
+            <div class="text-red-500">
+                Error processing audio: ${error.message}
+            </div>`;
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }
+}
+
+
+// Rest of your existing script for text chat...
+window.addEventListener("DOMContentLoaded", async () => {
     const chatBox = document.getElementById("chatBox");
 
-    // Trigger a POST request with a dummy message
     const response = await fetch("", {
-      method: "POST",
-      headers: {
-        "X-CSRFToken": "{{ csrf_token }}",
-        "Content-Type": "application/x-www-form-urlencoded"
-      },
-      body: new URLSearchParams({ message: "__start__" })  // <- Dummy initial trigger
+        method: "POST",
+        headers: {
+            "X-CSRFToken": "{{ csrf_token }}",
+            "Content-Type": "application/x-www-form-urlencoded"
+        },
+        body: new URLSearchParams({ message: "__start__" })
     });
 
     const data = await response.json();
     chatBox.innerHTML += `<div><div class="inline-block bg-blue-100 px-4 py-2 rounded">${data.response}</div></div>`;
+    
+    // Play initial greeting audio if available
+    if (data.audio) {
+        const audio = new Audio(`data:audio/mpeg;base64,${data.audio}`);
+        audio.play();
+    }
+    
     chatBox.scrollTop = chatBox.scrollHeight;
-  });
-</script>
+});
 
-
-<script>
-  const form = document.getElementById("chatForm");
-  const input = document.getElementById("messageInput");
-  const chatBox = document.getElementById("chatBox");
-
-  form.addEventListener("submit", async (e) => {
+const form = document.getElementById("chatForm");
+form.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const message = input.value;
-    input.value = "";
+    const message = messageInput.value;
+    messageInput.value = "";
 
     chatBox.innerHTML += `<div class="text-right"><div class="inline-block bg-gray-200 px-4 py-2 rounded">${message}</div></div>`;
     chatBox.scrollTop = chatBox.scrollHeight;
 
     const response = await fetch("", {
-      method: "POST",
-      headers: {
-        "X-CSRFToken": "{{ csrf_token }}",
-        "Content-Type": "application/x-www-form-urlencoded"
-      },
-      body: new URLSearchParams({ message })
+        method: "POST",
+        headers: {
+            "X-CSRFToken": "{{ csrf_token }}",
+            "Content-Type": "application/x-www-form-urlencoded"
+        },
+        body: new URLSearchParams({ message })
     });
 
     const data = await response.json();
@@ -65,19 +194,36 @@
     const completedId = data.completed_id;
 
     chatBox.innerHTML += `<div><div class="inline-block bg-blue-100 px-4 py-2 rounded">${botResponse}</div></div>`;
+    
+    // Play audio response if available
+    if (data.audio) {
+        const audio = new Audio(`data:audio/mpeg;base64,${data.audio}`);
+        audio.play();
+    }
+    
     chatBox.scrollTop = chatBox.scrollHeight;
 
     if (completedId) {
-		  chatBox.innerHTML += `<div class="text-green-600 mt-4">Redirecting you to detailed feedback...</div>`;
-		  chatBox.scrollTop = chatBox.scrollHeight;
-		  
-		  setTimeout(() => {
-		    window.location.href = `/interview/feedback/${completedId}/`;
-		  }, 1500);
-		}
-
-  });
+        chatBox.innerHTML += `<div class="text-green-600 mt-4">Redirecting you to detailed feedback...</div>`;
+        chatBox.scrollTop = chatBox.scrollHeight;
+        
+        setTimeout(() => {
+            window.location.href = `/interview/feedback/${completedId}/`;
+        }, 1500);
+    }
+});
 </script>
 
+<!-- Add Font Awesome for icons -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 
+<style>
+.animate-pulse {
+    animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+</style>
 {% endblock %}

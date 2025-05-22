@@ -4,8 +4,10 @@ import time
 import openai
 from openai import OpenAI
 from PyPDF2 import PdfReader
+import requests
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
+PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY")
 
 
 def read_file(file_path):
@@ -250,9 +252,47 @@ def create_personal_profile(structured_resume, structured_jd):
         }
 
 
-def generate_initial_question(structured_resume, structured_jd):
+def get_recent_interview_questions(company_name):
+    url = "https://api.perplexity.ai/chat/completions"
+    
+    headers = {
+        "Authorization": f"Bearer {PERPLEXITY_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    prompt = f"""You are a helpful AI assistant that conducts mock interviews.
+Rules:
+1. Provide only the final answer. It is important that you do not include any explanation on the steps below.
+2. Do not show the intermediate steps information.
+Steps:
+1. Decide if the answer should be a brief sentence or a list of suggestions.
+2. If it is a list of suggestions, first, write a brief and natural introduction based on the original query.
+3. Followed by a list of suggestions, each suggestion should be split by two newlines.
+Question : Give me top 5 recent non coding technical questions for data science interviews at {company_name}. If the company is too small and you really dont find anything, give a list of generic questions"""
+    
+    data = {
+        "model": "llama-3.1-sonar-large-128k-online",
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.1
+    }
+    
+    try:
+        response = requests.post(url, headers=headers, json=data)
+        response.raise_for_status()
+        result = response.json()
+        return result['choices'][0]['message']['content'].strip()
+    except Exception as e:
+        print(f"Error getting recent interview questions: {e}")
+        return f"Unable to fetch recent questions for {company_name}. Proceeding with standard interview."
+
+
+
+def generate_initial_question(structured_resume, structured_jd, company=""):
     """Generate the initial interview question based on structured resume and job description"""
     # Prepare resume and job description in a structured format
+
+    recent_questions = get_recent_interview_questions(company)
+
     resume_summary = {
         "name": structured_resume.get("contact_info", {}).get("name", ""),
         "experience": [
@@ -274,7 +314,7 @@ def generate_initial_question(structured_resume, structured_jd):
 
     jd_summary = {
         "title": structured_jd.get("title", ""),
-        "company": structured_jd.get("company", ""),
+        "company": company,
         "responsibilities": structured_jd.get("responsibilities", [])[:5],  # Limit to 5 key responsibilities
         "required_skills": structured_jd.get("requirements", {}).get("required_skills", []),
         "industry": structured_jd.get("industry", "")
@@ -288,7 +328,7 @@ def generate_initial_question(structured_resume, structured_jd):
     messages = [
         {"role": "system", "content": "You are an expert AI interviewer for data science roles."},
         {"role": "user", "content": f"""
-Given the structured resume and job description below, generate 1 thoughtful and role-specific technical interview question.
+Given the structured resume and job description below, generate a thoughtful and role-specific technical interview question.
 
 STRUCTURED RESUME:
 {resume_json}
@@ -296,14 +336,20 @@ STRUCTURED RESUME:
 STRUCTURED JOB DESCRIPTION:
 {jd_json}
 
+RECENT INTERVIEW QUESTIONS FROM THE COMPANY:
+{recent_questions}
+
 Guidelines for your question:
-1. Use the candidate's background and the job requirements
+1. You can use the list of company-wise question above or the candidate's background (only if relevant to the position) and the job requirements.
 2. Focus on technical knowledge and practical application
 3. Target skills or experiences that appear most relevant for this role
 4. Keep the question under 30 words and end with a question mark
 5. Make it conversational but substantive
+6. Ask only one question at a time
 """}
     ]
+
+    print(recent_questions)
 
     # Call OpenAI API
     client = OpenAI()
@@ -429,7 +475,7 @@ class InterviewSession:
 
     def start_interview(self):
         greeting = f"Hi {self.personal_profile.get('name', 'there')}, nice to meet you! Let's get started with your interview for the {self.personal_profile.get('role', 'data science')} role at {self.company}"
-        initial_question, self.messages = generate_initial_question(self.structured_resume, self.structured_jd)
+        initial_question, self.messages = generate_initial_question(self.structured_resume, self.structured_jd, self.company)
         self.current_question = initial_question
         self.interview_data.append({"question": initial_question, "answer": None, "evaluation": None})
         self.total_questions_asked += 1

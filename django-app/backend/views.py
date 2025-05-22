@@ -10,7 +10,7 @@ import openai
 import os
 import json
 from difflib import SequenceMatcher
-from .utils import read_file
+from .utils import read_file, transcribe_audio, text_to_speech
 from PyPDF2 import PdfReader
 from .script import InterviewSession
 
@@ -123,71 +123,87 @@ def extract_text_from_pdf(path):
 @login_required
 @csrf_exempt
 def interview_chat(request, interview_id):
-	interview = get_object_or_404(Interview, id=interview_id, user=request.user)
-	interview_type = interview.interview_type
+    interview = get_object_or_404(Interview, id=interview_id, user=request.user)
+    interview_type = interview.interview_type
 
-	session_key = f"session_{request.user.id}_{interview_id}"
-	session = active_sessions.get(session_key)
+    session_key = f"session_{request.user.id}_{interview_id}"
+    session = active_sessions.get(session_key)
 
-	if not session:
-		resume = interview.resume
-		job_description_text = interview.job_description or "N/A"
-		company = interview.company or "N/A"
-		session = InterviewSession(resume, job_description_text, company)
-		active_sessions[session_key] = session
+    if not session:
+        resume = interview.resume
+        job_description_text = interview.job_description or "N/A"
+        company = interview.company or "N/A"
+        session = InterviewSession(resume, job_description_text, company)
+        active_sessions[session_key] = session
 
-	# (rest of your POST handling and render remains same!)
+    if request.method == "POST":
+        # Handle audio input
+        if 'audio' in request.FILES:
+            audio_file = request.FILES['audio']
+            user_message = transcribe_audio(audio_file)
+            if not user_message:
+                return JsonResponse({"error": "Could not transcribe audio"}, status=400)
+        else:
+            user_message = request.POST.get("message", "").strip()
 
+        if not user_message:
+            return JsonResponse({"response": "Please enter a valid message."})
 
-	if request.method == "POST":
-	    user_message = request.POST.get("message", "").strip()
+        if session.total_questions_asked == 0 and session.current_question is None:
+            greeting_and_first_q = session.start_interview()
+            audio_response = text_to_speech(greeting_and_first_q)
+            return JsonResponse({
+                "transcript": "",  # No user message for initial greeting
+                "response": greeting_and_first_q,
+                "audio": audio_response
+            })
 
-	    if not user_message:
-	        return JsonResponse({"response": "Please enter a valid message."})
+        # First: Add user's answer
+        feedback_or_next_question, note = session.add_answer(user_message)
 
-	    if session.total_questions_asked == 0 and session.current_question is None:
-	        greeting_and_first_q = session.start_interview()
-	        return JsonResponse({"response": greeting_and_first_q})
+        if note == "Question clarified.":
+            audio_response = text_to_speech(feedback_or_next_question)
+            return JsonResponse({
+                "transcript": user_message,  # Include user's transcript
+                "response": feedback_or_next_question,
+                "audio": audio_response
+            })
 
-	    # First: Add user's answer
-	    feedback_or_next_question, note = session.add_answer(user_message)
+        # Handle moving to next step
+        next_question = session.next_question(interview_type)
+        audio_response = text_to_speech(next_question)
 
-	    if note == "Question clarified.":
-	        return JsonResponse({"response": feedback_or_next_question})
+        # Handle interview end
+        if "end of your interview" in next_question.lower():
+            if session.interview_data[-1]["answer"] is None:
+                session.interview_data[-1]["answer"] = user_message
+                session.interview_data[-1]["evaluation"] = feedback_or_next_question
 
-	    # Now carefully handle moving to the next step
-	    next_question = session.next_question(interview_type)
+            overall_summary = session.get_interview_summary()
 
-	    # 🛠 NEW LOGIC: if interview ended
-	    if "end of your interview" in next_question.lower():
-	        if session.interview_data[-1]["answer"] is None:
-	            session.interview_data[-1]["answer"] = user_message
-	            session.interview_data[-1]["evaluation"] = feedback_or_next_question
+            completed_interview = CompletedInterview.objects.create(
+                interview=interview,
+                user=request.user,
+                transcript=json.dumps(session.interview_data, indent=2),
+                summary=overall_summary
+            )
+            active_sessions.pop(session_key, None)
 
-	        overall_summary = session.get_interview_summary()
+            return JsonResponse({
+                "transcript": user_message,
+                "response": next_question,
+                "audio": audio_response,
+                "completed_id": completed_interview.id
+            })
 
-	        completed_interview = CompletedInterview.objects.create(
-	            interview=interview,
-	            user=request.user,
-	            transcript=json.dumps(session.interview_data, indent=2),
-	            summary=overall_summary
-	        )
-	        active_sessions.pop(session_key, None)
+        # Return next question with audio
+        return JsonResponse({
+            "transcript": user_message,  # Always include the transcript
+            "response": next_question,
+            "audio": audio_response
+        })
 
-	        return JsonResponse({
-	            "response": next_question,
-	            "completed_id": completed_interview.id
-	        })
-
-	    # 🛠 Important: otherwise return NEXT QUESTION cleanly
-	    return JsonResponse({
-	        "response": next_question
-	    })
-
-
-
-
-	return render(request, "interview_chat.html", {"interview": interview})
+    return render(request, "interview_chat.html", {"interview": interview})
 
 
 @login_required
