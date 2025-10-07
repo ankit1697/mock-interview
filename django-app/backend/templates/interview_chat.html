@@ -1,27 +1,33 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="max-w-2xl mx-auto bg-white shadow-md rounded p-6">
-  <h2 class="text-xl font-bold mb-4">AI Interview</h2>
+<div class="max-w-3xl mx-auto px-4 h-screen">
+  <div class="h-full flex flex-col">
+    <div class="py-3 text-center text-sm text-gray-500">AI Interview</div>
 
-  <div id="chatBox" class="space-y-4 max-h-[500px] overflow-y-auto mb-6 border p-4 rounded bg-gray-50"></div>
+    <div id="chatBox" class="flex-1 overflow-y-auto space-y-4 border rounded-lg bg-white p-4"></div>
 
-  <form id="chatForm" method="POST" class="flex gap-4">
-    {% csrf_token %}
-    <input type="text" name="message" id="messageInput" placeholder="Type your answer..." autocomplete="off"
-           class="flex-1 border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500">
-    <button type="submit" class="bg-orange-500 text-white px-4 py-2 rounded hover:bg-orange-600">Send</button>
-  </form>
+    <div class="mt-3">
+      <form id="chatForm" method="POST" class="bg-white border rounded-lg p-2">
+        {% csrf_token %}
+        <div class="flex items-end gap-2">
+          <textarea name="message" id="messageInput" rows="1" placeholder="Send a message..." autocomplete="off"
+                    class="flex-1 max-h-40 resize-none border-0 focus:ring-0 px-3 py-2 text-sm"
+                    style="outline: none;"></textarea>
+          <button type="submit" class="bg-orange-500 text-white px-4 py-2 rounded hover:bg-orange-600">Send</button>
+        </div>
+      </form>
 
-  <!-- Voice Interface -->
-  <div class="mt-4 flex items-center gap-4">
-    <button id="recordButton" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
-      <i class="fas fa-microphone mr-2"></i>Record Answer
-    </button>
-    <button id="stopButton" disabled class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600">
-      <i class="fas fa-stop mr-2"></i>Stop
-    </button>
-    <div id="recordingStatus" class="hidden text-red-500">
-      <i class="fas fa-circle animate-pulse mr-2"></i>Recording...
+      <div class="mt-3 flex items-center gap-4">
+        <button id="recordButton" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+          <i class="fas fa-microphone mr-2"></i>Record Answer
+        </button>
+        <button id="stopButton" disabled class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600">
+          <i class="fas fa-stop mr-2"></i>Stop
+        </button>
+        <div id="recordingStatus" class="hidden text-red-500">
+          <i class="fas fa-circle animate-pulse mr-2"></i>Recording...
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -95,8 +101,8 @@ async function sendAudioToServer(audioBlob) {
         // Display user's transcribed message
         if (data.transcript) {
             chatBox.innerHTML += `
-                <div class="text-right">
-                    <div class="inline-block bg-gray-200 px-4 py-2 rounded">
+                <div class="flex justify-end">
+                    <div class="inline-block bg-gray-100 px-4 py-2 rounded-lg max-w-[80%]">
                         ${data.transcript}
                     </div>
                 </div>`;
@@ -106,8 +112,8 @@ async function sendAudioToServer(audioBlob) {
         // Display AI response
         if (data.response) {
             chatBox.innerHTML += `
-                <div>
-                    <div class="inline-block bg-blue-100 px-4 py-2 rounded">
+                <div class="flex justify-start">
+                    <div class="inline-block bg-blue-50 px-4 py-2 rounded-lg max-w-[80%]">
                         ${data.response}
                     </div>
                 </div>`;
@@ -158,7 +164,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     });
 
     const data = await response.json();
-    chatBox.innerHTML += `<div><div class="inline-block bg-blue-100 px-4 py-2 rounded">${data.response}</div></div>`;
+    chatBox.innerHTML += `<div class="flex justify-start"><div class="inline-block bg-blue-50 px-4 py-2 rounded-lg max-w-[80%]">${data.response}</div></div>`;
     
     // Play initial greeting audio if available
     if (data.audio) {
@@ -172,10 +178,13 @@ window.addEventListener("DOMContentLoaded", async () => {
 const form = document.getElementById("chatForm");
 form.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const message = messageInput.value;
+    const message = messageInput.value.trim();
     messageInput.value = "";
+    autoResize(messageInput);
 
-    chatBox.innerHTML += `<div class="text-right"><div class="inline-block bg-gray-200 px-4 py-2 rounded">${message}</div></div>`;
+    if (message.length) {
+      chatBox.innerHTML += `<div class="flex justify-end"><div class="inline-block bg-gray-100 px-4 py-2 rounded-lg max-w-[80%]">${message}</div></div>`;
+    }
     chatBox.scrollTop = chatBox.scrollHeight;
 
     const response = await fetch("", {
@@ -193,7 +202,7 @@ form.addEventListener("submit", async (e) => {
     const botResponse = data.response;
     const completedId = data.completed_id;
 
-    chatBox.innerHTML += `<div><div class="inline-block bg-blue-100 px-4 py-2 rounded">${botResponse}</div></div>`;
+    chatBox.innerHTML += `<div class="flex justify-start"><div class="inline-block bg-blue-50 px-4 py-2 rounded-lg max-w-[80%]">${botResponse}</div></div>`;
     
     // Play audio response if available
     if (data.audio) {
@@ -211,6 +220,21 @@ form.addEventListener("submit", async (e) => {
             window.location.href = `/interview/feedback/${completedId}/`;
         }, 1500);
     }
+});
+
+// Auto-resize textarea like ChatGPT
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+}
+
+messageInput.addEventListener('input', () => autoResize(messageInput));
+// Submit on Enter, newline on Shift+Enter
+messageInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    document.getElementById('chatForm').dispatchEvent(new Event('submit'));
+  }
 });
 </script>
 
