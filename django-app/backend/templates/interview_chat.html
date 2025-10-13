@@ -159,10 +159,15 @@ function startAutoRecording() {
             let silenceStart = null;
             let speakingStart = null;
             let hasSpoken = false;
-            const silenceThreshold = 0.006; // lower threshold to avoid cutting on quieter voices
-            const minSpokenMs = 300; // require this much speaking before silence can be considered end
-            const maxSilenceMs = 2500; // 2.5s silence threshold
-            const maxDurationMs = 45000; // 45s max per response
+            // VAD tuning: adjust these if you see recordings always hitting maxDuration
+            // silenceThreshold: RMS level below which we consider the frame "silent". Raise if your mic is quiet.
+            const silenceThreshold = 0.02; // increased from 0.006 to avoid never-detecting silence
+            // minSpokenMs: minimum continuous speech required before we consider 'hasSpoken' true
+            const minSpokenMs = 300; // lower to allow short answers to count as speech
+            // maxSilenceMs: how long of silence ends the recording after speech detected
+            const maxSilenceMs = 3000; // ~1.2s silence ends recording
+            // maxDurationMs: hard cap on recording length (safety)
+            const maxDurationMs = 200000; // 200s max per response
             const startTime = Date.now();
 
             const check = async () => {
@@ -187,6 +192,11 @@ function startAutoRecording() {
                     // reset silence timer while speaking
                     silenceStart = null;
                 }
+
+                // Debug output to help tune VAD: show RMS values in console and status area
+                if (window.DEBUG_VAD) console.debug('VAD rms:', rms.toFixed(5), 'hasSpoken:', hasSpoken);
+                // lightweight visual debug (optional) — comment out if noisy
+                try { statusArea.textContent = hasSpoken ? 'Recording (speech detected)' : `Recording (RMS ${rms.toFixed(4)})`; } catch(e) {}
 
                 const now = Date.now();
                 if (stopRequested) {
