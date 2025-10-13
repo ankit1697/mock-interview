@@ -1,85 +1,47 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="max-w-3xl mx-auto px-4 h-screen">
-  <div class="h-full flex flex-col">
-    <div class="py-3 text-center text-sm text-gray-500">AI Interview</div>
-
-    <div id="chatBox" class="flex-1 overflow-y-auto space-y-4 border rounded-lg bg-white p-4"></div>
-
-    <div class="mt-3">
-      <form id="chatForm" method="POST" class="bg-white border rounded-lg p-2">
-        {% csrf_token %}
-        <div class="flex items-end gap-2">
-          <textarea name="message" id="messageInput" rows="1" placeholder="Send a message..." autocomplete="off"
-                    class="flex-1 max-h-40 resize-none border-0 focus:ring-0 px-3 py-2 text-sm"
-                    style="outline: none;"></textarea>
-          <button type="submit" class="bg-orange-500 text-white px-4 py-2 rounded hover:bg-orange-600">Send</button>
-        </div>
-      </form>
-
-      <div class="mt-3 flex items-center gap-4">
-        <button id="recordButton" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
-          <i class="fas fa-microphone mr-2"></i>Record Answer
-        </button>
-        <button id="stopButton" disabled class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600">
-          <i class="fas fa-stop mr-2"></i>Stop
-        </button>
-        <div id="recordingStatus" class="hidden text-red-500">
-          <i class="fas fa-circle animate-pulse mr-2"></i>Recording...
-        </div>
-      </div>
+    <div class="h-full flex flex-col">
+    <div class="py-3 text-center text-sm text-gray-500 flex items-center justify-center gap-3">
+        <!-- Interviewer avatar (visible filled badge) -->
+        <div id="interviewerIcon" class="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-xs font-semibold text-gray-700">AI</div>
+        <span id="interviewTitle">{{ interview.company|default:"Company" }} Interviewer</span>
     </div>
+
+        <!-- Hidden chat box (voice-only mode: do not display AI text) -->
+        <div id="chatBox" class="hidden"></div>
+
+        <!-- Minimal voice-only UI: a perfectly round large circle centered on the page -->
+        <div class="mt-3 flex items-center justify-center flex-col gap-4" style="height: calc(100vh - 120px);">
+            <div id="voiceCircle" class="flex items-center justify-center select-none relative" style="position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); width:min(86vmin, 1000px); height:min(86vmin, 1000px); border-radius:50%; z-index:20; box-shadow:0 12px 48px rgba(0,0,0,0.12); background:#f97316;">
+                <div class="absolute top-6 left-6 w-12 h-12 rounded-full bg-white flex items-center justify-center text-sm text-gray-700 font-semibold">AI</div>
+                <div class="flex flex-col items-center gap-4 text-center">
+                    <div id="voiceLabel" class="text-4xl font-semibold text-white" style="text-shadow:0 2px 6px rgba(0,0,0,0.25)">Tap to start</div>
+                    <div id="companyLabel" class="text-xl text-white/95" style="text-shadow:0 1px 3px rgba(0,0,0,0.18)">{{ interview.company|default:"Company" }} Interviewer</div>
+                </div>
+            </div>
+            <!-- Stop interview button (fixed bottom center, visible when shown) -->
+            <button id="stopInterviewButton" class="hidden fixed bottom-10 left-1/2 transform -translate-x-1/2 bg-red-600 text-white px-6 py-3 rounded-full shadow-lg z-30" style="pointer-events:auto;">Stop Interview</button>
+            <div id="statusArea" class="text-gray-400 text-sm mt-4"></div>
+        </div>
+
+        <!-- Full-screen one-tap overlay to grant autoplay/mic permission (removed after first tap) -->
+        <div id="gestureOverlay" class="fixed inset-0 bg-black bg-opacity-40 z-50 flex items-center justify-center" style="backdrop-filter: blur(2px);">
+            <button id="startButton" class="bg-white text-gray-800 px-6 py-4 rounded-full text-xl shadow-lg">Start interview</button>
+        </div>
   </div>
 </div>
 
 <script>
-// Voice recording functionality
-let mediaRecorder;
+// Auto play-record loop: play AI audio, then record user automatically, submit, repeat
+let mediaRecorder = null;
 let audioChunks = [];
-const recordButton = document.getElementById('recordButton');
-const stopButton = document.getElementById('stopButton');
-const recordingStatus = document.getElementById('recordingStatus');
 const chatBox = document.getElementById('chatBox');
-const messageInput = document.getElementById('messageInput');
-
-recordButton.addEventListener('click', async () => {
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        mediaRecorder = new MediaRecorder(stream);
-        
-        mediaRecorder.ondataavailable = (e) => {
-            if (e.data.size > 0) {
-                audioChunks.push(e.data);
-            }
-        };
-        
-        mediaRecorder.onstop = async () => {
-            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-            await sendAudioToServer(audioBlob);
-            audioChunks = [];
-        };
-        
-        mediaRecorder.start(100); // Collect data every 100ms
-        recordButton.disabled = true;
-        stopButton.disabled = false;
-        recordingStatus.classList.remove('hidden');
-    } catch (error) {
-        console.error('Error accessing microphone:', error);
-        alert('Could not access microphone. Please check permissions.');
-    }
-});
-
-stopButton.addEventListener('click', () => {
-    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-        mediaRecorder.stop();
-        stopButton.disabled = true;
-        recordingStatus.classList.add('hidden');
-        recordButton.disabled = false;
-        
-        // Stop all tracks
-        mediaRecorder.stream.getTracks().forEach(track => track.stop());
-    }
-});
+const voiceCircle = document.getElementById('voiceCircle');
+const voiceLabel = document.getElementById('voiceLabel');
+const stopInterviewButton = document.getElementById('stopInterviewButton');
+const statusArea = document.getElementById('statusArea');
+let stopRequested = false;
 
 async function sendAudioToServer(audioBlob) {
     const formData = new FormData();
@@ -118,12 +80,14 @@ async function sendAudioToServer(audioBlob) {
                     </div>
                 </div>`;
             chatBox.scrollTop = chatBox.scrollHeight;
-            
-            // Play audio response if available
-            if (data.audio) {
-                const audio = new Audio(`data:audio/mpeg;base64,${data.audio}`);
-                audio.play();
-            }
+        }
+
+        // Play audio response if available (await playback before recording)
+        if (data.audio) {
+            voiceLabel.textContent = 'Speaking...';
+            voiceCircle.classList.add('bg-orange-600');
+            await playAudioBase64(data.audio);
+            voiceCircle.classList.remove('bg-orange-600');
         }
 
         // Handle interview completion
@@ -149,93 +113,209 @@ async function sendAudioToServer(audioBlob) {
     }
 }
 
-
-// Rest of your existing script for text chat...
-window.addEventListener("DOMContentLoaded", async () => {
-    const chatBox = document.getElementById("chatBox");
-
-    const response = await fetch("", {
-        method: "POST",
-        headers: {
-            "X-CSRFToken": "{{ csrf_token }}",
-            "Content-Type": "application/x-www-form-urlencoded"
-        },
-        body: new URLSearchParams({ message: "__start__" })
+function playAudioBase64(base64Data) {
+    return new Promise((resolve, reject) => {
+        const audio = new Audio(`data:audio/mpeg;base64,${base64Data}`);
+        audio.onended = () => resolve();
+        audio.onerror = (e) => reject(e);
+        audio.play().catch(reject);
     });
-
-    const data = await response.json();
-    chatBox.innerHTML += `<div class="flex justify-start"><div class="inline-block bg-blue-50 px-4 py-2 rounded-lg max-w-[80%]">${data.response}</div></div>`;
-    
-    // Play initial greeting audio if available
-    if (data.audio) {
-        const audio = new Audio(`data:audio/mpeg;base64,${data.audio}`);
-        audio.play();
-    }
-    
-    chatBox.scrollTop = chatBox.scrollHeight;
-});
-
-const form = document.getElementById("chatForm");
-form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const message = messageInput.value.trim();
-    messageInput.value = "";
-    autoResize(messageInput);
-
-    if (message.length) {
-      chatBox.innerHTML += `<div class="flex justify-end"><div class="inline-block bg-gray-100 px-4 py-2 rounded-lg max-w-[80%]">${message}</div></div>`;
-    }
-    chatBox.scrollTop = chatBox.scrollHeight;
-
-    const response = await fetch("", {
-        method: "POST",
-        headers: {
-            "X-CSRFToken": "{{ csrf_token }}",
-            "Content-Type": "application/x-www-form-urlencoded"
-        },
-        body: new URLSearchParams({ message })
-    });
-
-    const data = await response.json();
-    console.log(data);
-
-    const botResponse = data.response;
-    const completedId = data.completed_id;
-
-    chatBox.innerHTML += `<div class="flex justify-start"><div class="inline-block bg-blue-50 px-4 py-2 rounded-lg max-w-[80%]">${botResponse}</div></div>`;
-    
-    // Play audio response if available
-    if (data.audio) {
-        const audio = new Audio(`data:audio/mpeg;base64,${data.audio}`);
-        audio.play();
-    }
-    
-    chatBox.scrollTop = chatBox.scrollHeight;
-
-    if (completedId) {
-        chatBox.innerHTML += `<div class="text-green-600 mt-4">Redirecting you to detailed feedback...</div>`;
-        chatBox.scrollTop = chatBox.scrollHeight;
-        
-        setTimeout(() => {
-            window.location.href = `/interview/feedback/${completedId}/`;
-        }, 1500);
-    }
-});
-
-// Auto-resize textarea like ChatGPT
-function autoResize(el) {
-  el.style.height = 'auto';
-  el.style.height = Math.min(el.scrollHeight, 160) + 'px';
 }
 
-messageInput.addEventListener('input', () => autoResize(messageInput));
-// Submit on Enter, newline on Shift+Enter
-messageInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    document.getElementById('chatForm').dispatchEvent(new Event('submit'));
-  }
+// Simple VAD: stop recording after N ms of silence or maxDuration
+function startAutoRecording() {
+    return new Promise(async (resolve, reject) => {
+        try {
+            voiceLabel.textContent = 'Recording...';
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const source = audioContext.createMediaStreamSource(stream);
+            const analyser = audioContext.createAnalyser();
+            analyser.fftSize = 2048;
+            source.connect(analyser);
+
+            // Prefer explicit audio/webm with opus codec where available
+            const mimeType = 'audio/webm;codecs=opus';
+            try {
+                mediaRecorder = new MediaRecorder(stream, { mimeType });
+            } catch (e) {
+                // Fallback to default if the mimeType is not supported
+                mediaRecorder = new MediaRecorder(stream);
+            }
+            audioChunks = [];
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data && e.data.size > 0) audioChunks.push(e.data);
+            };
+
+            // Resolve only after onstop to ensure all dataavailable events have been fired
+            const stoppedPromise = new Promise((resolveStopped) => {
+                mediaRecorder.onstop = () => {
+                    resolveStopped();
+                };
+            });
+
+            mediaRecorder.start();
+
+            let silenceStart = null;
+            let speakingStart = null;
+            let hasSpoken = false;
+            const silenceThreshold = 0.006; // lower threshold to avoid cutting on quieter voices
+            const minSpokenMs = 300; // require this much speaking before silence can be considered end
+            const maxSilenceMs = 2500; // 2.5s silence threshold
+            const maxDurationMs = 45000; // 45s max per response
+            const startTime = Date.now();
+
+            const check = async () => {
+                const buffer = new Uint8Array(analyser.fftSize);
+                analyser.getByteTimeDomainData(buffer);
+                // compute RMS
+                let sum = 0;
+                for (let i = 0; i < buffer.length; i++) {
+                    const v = (buffer[i] - 128) / 128;
+                    sum += v * v;
+                }
+                const rms = Math.sqrt(sum / buffer.length);
+
+                if (rms < silenceThreshold) {
+                    // only start silence timer if user has already spoken
+                    if (hasSpoken && !silenceStart) silenceStart = Date.now();
+                } else {
+                    // speaking detected
+                    if (!speakingStart) speakingStart = Date.now();
+                    const spokenSoFar = Date.now() - speakingStart;
+                    if (spokenSoFar > minSpokenMs) hasSpoken = true;
+                    // reset silence timer while speaking
+                    silenceStart = null;
+                }
+
+                const now = Date.now();
+                if (stopRequested) {
+                    // external stop requested
+                    mediaRecorder.stop();
+                    await stoppedPromise;
+                    stream.getTracks().forEach(t => t.stop());
+                    voiceLabel.textContent = 'Stopping...';
+                    resolve(new Blob(audioChunks, { type: 'audio/webm' }));
+                    return;
+                }
+
+                if ((silenceStart && now - silenceStart > maxSilenceMs) || (now - startTime > maxDurationMs)) {
+                    // stop
+                    mediaRecorder.stop();
+                    // wait for onstop to ensure final chunk delivered
+                    await stoppedPromise;
+                    // stop tracks
+                    stream.getTracks().forEach(t => t.stop());
+                    voiceLabel.textContent = 'Processing...';
+                    resolve(new Blob(audioChunks, { type: 'audio/webm' }));
+                    return;
+                }
+
+                requestAnimationFrame(() => { check(); });
+            };
+
+            requestAnimationFrame(() => { check(); });
+        } catch (err) {
+            reject(err);
+        }
+    });
+}
+
+
+// Start only after user gesture (overlay tap) to satisfy autoplay/microphone policies
+window.addEventListener("DOMContentLoaded", () => {
+    const startButton = document.getElementById('startButton');
+    const gestureOverlay = document.getElementById('gestureOverlay');
+
+    startButton.addEventListener('click', async () => {
+        console.log('Start tapped: requesting microphone');
+        // Remove overlay immediately
+        gestureOverlay.remove();
+        voiceLabel.textContent = 'Preparing...';
+
+        try {
+            // Pre-warm getUserMedia permissions so later recording is allowed
+            const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            // Close tracks immediately; actual recording will re-open and use permission
+            micStream.getTracks().forEach(t => t.stop());
+
+            // Now request initial greeting from server
+            const initResp = await fetch("", {
+                method: "POST",
+                headers: {
+                    "X-CSRFToken": "{{ csrf_token }}",
+                    "Content-Type": "application/x-www-form-urlencoded"
+                },
+                body: new URLSearchParams({ message: "__start__" })
+            });
+            const initData = await initResp.json();
+
+            // Do not display text (voice-only)
+            console.log('Initial data received', initData);
+
+            if (initData.audio) {
+                voiceLabel.textContent = 'Speaking...';
+                await playAudioBase64(initData.audio);
+            }
+
+            // Show stop button
+            stopInterviewButton.classList.remove('hidden');
+            statusArea.textContent = 'Interview in progress';
+
+            // Wire stop button
+            stopInterviewButton.addEventListener('click', async () => {
+                stopRequested = true;
+                statusArea.textContent = 'Stopping...';
+                // stop recorder immediately if active
+                try {
+                    if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+                } catch (e) { /* ignore */ }
+
+                // Tell server to finalize interview
+                try {
+                    const fd = new FormData();
+                    fd.append('stop', '1');
+                    fd.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+                    const resp = await fetch('', { method: 'POST', body: fd });
+                    const data = await resp.json();
+                    if (data.completed_id) {
+                        window.location.href = `/interview/feedback/${data.completed_id}/`;
+                        return;
+                    }
+                } catch (err) {
+                    console.error('Error stopping interview on server:', err);
+                }
+            });
+
+            // Enter the recording loop
+            let finished = false;
+            while (!finished && !stopRequested) {
+                try {
+                    const audioBlob = await startAutoRecording();
+                    if (stopRequested) break;
+                    console.log('Recorded blob', audioBlob);
+                    voiceLabel.textContent = 'Thinking...';
+                    await sendAudioToServer(audioBlob);
+                    // sendAudioToServer will play the returned audio and handle redirect on completion
+                } catch (err) {
+                    console.error('Recording loop error:', err);
+                    break;
+                }
+            }
+
+            // Cleanup after loop
+            stopInterviewButton.classList.add('hidden');
+            statusArea.textContent = stopRequested ? 'Interview stopped' : '';
+        } catch (err) {
+            console.error('Unable to start interview:', err);
+            voiceLabel.textContent = 'Error';
+        }
+    });
 });
+
+// Text form is disabled in voice-only mode; keep functions for compatibility but don't attach handlers
+
+// Voice-only mode: textarea and keyboard handlers are disabled.
 </script>
 
 <!-- Add Font Awesome for icons -->
