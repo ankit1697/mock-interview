@@ -1,13 +1,18 @@
 import openai
 import time
 from openai import OpenAI
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 import os
 from utils import read_file
 from difflib import SequenceMatcher
 
-load_dotenv()
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+load_dotenv(find_dotenv(), override=True)
+key = os.getenv("OPENAI_API_KEY")
+key = (key.strip() if key else None)
+print("OPENAI_API_KEY endswith:", (key[-4:] if key else "None"))
+if key and not key.startswith("sk-"):
+    print("Warning: OPENAI_API_KEY does not start with 'sk-'")
+client = OpenAI(api_key=key)
 
 resume_path = "resume.pdf"
 jd_path = "jd.txt"

@@ -1,10 +1,10 @@
 # evaluator.py
 import openai
 from openai import OpenAI
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 import os
 
-load_dotenv()
+load_dotenv(find_dotenv(), override=True)
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 RUBRIC = {

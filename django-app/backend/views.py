@@ -91,6 +91,15 @@ def setup_interview(request):
 			uploaded_resume.save()
 			selected_resume = uploaded_resume
 
+			# Rebind interview form so the new resume is selected in the dropdown
+			data = interview_form.data.copy()
+			data['resume'] = str(uploaded_resume.id)
+			interview_form = InterviewForm(data)
+
+		# Ensure resume field is limited to user's resumes and remove blank option
+		interview_form.fields['resume'].queryset = request.user.resumes.all()
+		interview_form.fields['resume'].empty_label = None
+
 		if interview_form.is_valid():
 			interview = interview_form.save(commit=False)
 			interview.user = request.user
@@ -104,6 +113,7 @@ def setup_interview(request):
 			'resume': preferred_resume.id if preferred_resume else None
 		})
 		interview_form.fields['resume'].queryset = request.user.resumes.all()
+		interview_form.fields['resume'].empty_label = None
 		upload_form = ResumeUploadForm()
 
 	return render(request, 'interview_setup.html', {

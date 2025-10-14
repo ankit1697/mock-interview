@@ -3,10 +3,18 @@ import json
 import time
 import openai
 from openai import OpenAI
+from dotenv import load_dotenv, find_dotenv
 from PyPDF2 import PdfReader
 import requests
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
+_dotenv_path = find_dotenv()
+load_dotenv(_dotenv_path, override=True)
+
+# Normalize and validate OpenAI key
+_openai_key = os.getenv("OPENAI_API_KEY")
+openai.api_key = _openai_key
+openai_client = OpenAI(api_key=_openai_key)
+
 PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY")
 
 
@@ -65,7 +73,7 @@ def read_docx(docx_path):
 def parse_resume_with_ai(resume_text):
     """Use AI to extract structured information from resume text"""
     try:
-        client = OpenAI()
+        client = openai_client
 
         prompt = f"""
         Extract structured information from the following resume:
@@ -176,7 +184,7 @@ def extract_resume_structure(resume_path):
 
 def extract_job_description_structure_from_text(jd_text):
         try:
-            client = OpenAI()
+            client = openai_client
 
             prompt = f"""
             Extract structured information from the following job description:
@@ -352,7 +360,7 @@ Guidelines for your question:
     print(recent_questions)
 
     # Call OpenAI API
-    client = OpenAI()
+    client = openai_client
 
     start = time.time()
     response = client.chat.completions.create(
@@ -487,7 +495,7 @@ class InterviewSession:
 
         Candidate's Response: {user_response}
         """
-        check_response = OpenAI().chat.completions.create(
+        check_response = openai_client.chat.completions.create(
             model="gpt-4o",
             messages=[{"role": "user", "content": clarification_prompt}],
             temperature=0
@@ -510,7 +518,7 @@ class InterviewSession:
         {self.current_question}
         """
 
-        response = OpenAI().chat.completions.create(
+        response = openai_client.chat.completions.create(
             model="gpt-4o",
             messages=[{"role": "user", "content": rephrase_prompt}],
             temperature=0.5  # slight randomness to force rephrasing
@@ -536,7 +544,7 @@ class InterviewSession:
         For each criterion, provide a score, a short feedback, and an improvement suggestion.
         Then provide an Overall Score (0-100) with a 2-3 sentence summary.
         """
-        response = OpenAI().chat.completions.create(
+        response = openai_client.chat.completions.create(
             model="gpt-4o",
             messages=[
                 {"role": "system", "content": "You are an expert AI interviewer and evaluator for data science roles."},
@@ -564,7 +572,7 @@ class InterviewSession:
 
     def should_ask_follow_up(self, user_response):
         follow_up_check_prompt = f"Was the candidate's answer complete and clear? Answer with 'yes' or 'no'.\nCandidate's answer: {user_response}"
-        check_response = OpenAI().chat.completions.create(
+        check_response = openai_client.chat.completions.create(
             model="gpt-4o",
             messages=[{"role": "user", "content": follow_up_check_prompt}],
             temperature=0
@@ -627,7 +635,7 @@ class InterviewSession:
         {transcript}
         """
 
-        summary_response = OpenAI().chat.completions.create(
+        summary_response = openai_client.chat.completions.create(
             model="gpt-4o",
             messages=[
                 {"role": "system", "content": "You are an expert AI interviewer and evaluator for data science roles."},

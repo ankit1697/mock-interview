@@ -1,12 +1,16 @@
 from openai import OpenAI
 import os
+from dotenv import load_dotenv, find_dotenv
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
 from pathlib import Path
 import base64
 
-# Initialize the client
-client = OpenAI()
+# Ensure env is loaded and use the updated key
+load_dotenv(find_dotenv(), override=True)
+_key = os.getenv("OPENAI_API_KEY")
+_key = (_key.strip() if _key else None)
+client = OpenAI(api_key=_key)
 
 def transcribe_audio(audio_file):
     """Transcribe audio using OpenAI Whisper"""
