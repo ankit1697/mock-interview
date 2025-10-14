@@ -13,6 +13,40 @@ from difflib import SequenceMatcher
 from .utils import read_file, transcribe_audio, text_to_speech
 from PyPDF2 import PdfReader
 from .script import InterviewSession
+import requests
+from django.views.decorators.http import require_POST
+from django.contrib.auth.decorators import login_required
+
+
+# Minimal endpoint to create an ephemeral realtime session/token with OpenAI
+@login_required
+@require_POST
+@csrf_exempt
+def create_realtime_session(request):
+    """Issue an ephemeral realtime session from OpenAI and return the provider response.
+
+    This keeps the long-lived OpenAI API key on the server. The client should call
+    this endpoint to get short-lived credentials and then use those credentials to
+    establish a direct realtime (WebRTC) connection to the provider.
+    """
+    OPENAI_KEY = os.getenv("OPENAI_API_KEY")
+    if not OPENAI_KEY:
+        return JsonResponse({"error": "Server missing OpenAI API key"}, status=500)
+
+    try:
+        # Adjust this URL/payload to match the realtime provider's ephemeral session API
+        url = "https://api.openai.com/v1/realtime/sessions"
+        payload = {"model": "gpt-4o-realtime-preview-2024", "voice": "alloy"}
+        headers = {
+            "Authorization": f"Bearer {OPENAI_KEY}",
+            "Content-Type": "application/json",
+        }
+
+        resp = requests.post(url, headers=headers, json=payload, timeout=10)
+        resp.raise_for_status()
+        return JsonResponse(resp.json())
+    except requests.RequestException as e:
+        return JsonResponse({"error": f"Could not create realtime session: {str(e)}"}, status=502)
 
 
 def login_view(request):
@@ -155,6 +189,46 @@ def interview_chat(request, interview_id):
                 return JsonResponse({"error": "Could not transcribe audio"}, status=400)
         else:
             user_message = request.POST.get("message", "").strip()
+        # If client requested an explicit stop, finalize the interview and return completed_id
+        if request.POST.get('stop') or user_message == '__stop__':
+            print(f"[interview_chat] Stop requested for interview_id={interview_id} by user={request.user.id}")
+            # Save final answer if provided
+            if user_message and user_message not in ['__stop__', '__end__']:
+                try:
+                    session.interview_data[session.current_question_idx]["answer"] = user_message
+                except Exception:
+                    pass
+
+            # Safety: if the last question slot exists but has no answer, and we have any recent answer stored in the session state, keep it
+            try:
+                if session.interview_data:
+                    last_slot = session.interview_data[-1]
+                    if last_slot.get("answer") is None and session.current_question_idx < len(session.interview_data):
+                        current_slot = session.interview_data[session.current_question_idx]
+                        if current_slot.get("answer"):
+                            last_slot["answer"] = current_slot.get("answer")
+            except Exception:
+                pass
+
+            overall_summary = session.get_interview_summary()
+            print(f"[interview_chat] Generated interview summary for interview_id={interview_id}; creating CompletedInterview...")
+
+            completed_interview = CompletedInterview.objects.create(
+                interview=interview,
+                user=request.user,
+                transcript=json.dumps(session.interview_data, indent=2),
+                summary=overall_summary
+            )
+            active_sessions.pop(session_key, None)
+
+            audio_response = text_to_speech("Your interview has been stopped. Redirecting to feedback.")
+
+            return JsonResponse({
+                "transcript": user_message,
+                "response": "Interview stopped. Redirecting...",
+                "audio": audio_response,
+                "completed_id": completed_interview.id
+            })
 
         if not user_message:
             return JsonResponse({"response": "Please enter a valid message."})

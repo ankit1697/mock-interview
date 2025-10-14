@@ -553,18 +553,82 @@ class InterviewSession:
         )
         return response.choices[0].message.content.strip()
 
+    def handle_unknown_answer(self, answer):
+        """When candidate says they don't know, produce a short hint and a simpler follow-up question."""
+        prompt = f"""
+You are an empathetic technical interviewer helping a candidate who says they don't know the answer.
+Task: Provide a concise, 1-2 sentence hint that guides the candidate how to think about the problem (no spoilers or full solution), then provide one simpler follow-up question they can attempt. Format exactly as:
+HINT: <hint text>
+FOLLOWUP: <follow-up question?>
+
+Candidate's raw reply: {answer}
+"""
+
+        try:
+            resp = openai_client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.4
+            )
+            text = resp.choices[0].message.content.strip()
+            # Extract lines
+            hint = None
+            follow = None
+            for line in text.splitlines():
+                if line.strip().lower().startswith('hint:'):
+                    hint = line.split(':', 1)[1].strip()
+                if line.strip().lower().startswith('followup:') or line.strip().lower().startswith('follow-up:'):
+                    follow = line.split(':', 1)[1].strip()
+
+            if not hint:
+                # fallback: first paragraph
+                hint = text.split('\n\n')[0].strip()
+            if not follow:
+                # fallback: last line
+                follow = text.splitlines()[-1].strip()
+
+            return hint, follow
+        except Exception as e:
+            print(f"Error generating hint/followup: {e}")
+            return ("Try breaking the problem into smaller steps.", "Can you describe the first step you would take?")
+
     def add_answer(self, answer):
         if self.is_clarification_request(answer):
             clarification_response = self.rephrase_current_question()
             return clarification_response, "Question clarified."
 
+        # Save the raw answer
         self.interview_data[self.current_question_idx]["answer"] = answer
 
-        # Evaluate immediately
+        # Add the assistant question and user's answer to the conversation messages so follow-up generation sees them
+        try:
+            self.messages.append({"role": "assistant", "content": self.current_question})
+            self.messages.append({"role": "user", "content": answer})
+        except Exception:
+            pass
+
+        # Detect explicit 'I don't know' type responses (simple heuristics)
+        low = answer.strip().lower()
+        unknown_indicators = ["don't know", "dont know", "idk", "not sure", "no idea", "i'm not sure", "i am not sure"]
+        if any(ind in low for ind in unknown_indicators):
+            # Provide a hint and a simpler follow-up question instead of marking this answer final
+            hint, follow = self.handle_unknown_answer(answer)
+            # Store a brief evaluation note
+            self.interview_data[self.current_question_idx]["evaluation"] = f"Candidate indicated they didn't know. Provided hint: {hint}"
+
+            # Set follow-up as the current question and append a slot
+            self.current_question = follow
+            self.interview_data.append({"question": follow, "answer": None, "evaluation": None})
+            self.total_questions_asked += 1
+
+            # Do not increment current_question_idx so the original question remains accessible
+            return hint, "Hint provided, follow-up question asked."
+
+        # Otherwise: Evaluate normally
         evaluation_feedback = self.evaluate_answer(answer, self.current_question)
         self.interview_data[self.current_question_idx]["evaluation"] = evaluation_feedback
 
-        # 🛠 FIX: Move the pointer forward after saving answer
+        # Move pointer forward after saving answer
         self.current_question_idx += 1
 
         return evaluation_feedback, "Answer recorded and evaluated."
