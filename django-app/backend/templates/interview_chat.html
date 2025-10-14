@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="max-w-3xl mx-auto px-4 h-screen">
+<div class="w-full mx-auto px-4 h-screen">
     <div class="h-full flex flex-col">
     <div class="py-3 text-center text-sm text-gray-500 flex items-center justify-center gap-3">
         <!-- Interviewer avatar (visible filled badge) -->
@@ -8,21 +8,29 @@
         <span id="interviewTitle">{{ interview.company|default:"Company" }} Interviewer</span>
     </div>
 
-        <!-- Hidden chat box (voice-only mode: do not display AI text) -->
-        <div id="chatBox" class="hidden"></div>
+        <!-- Two-column layout: left = transcript (AI questions + user answers), right = live self-video + status -->
+        <div class="mt-3 flex items-stretch gap-4" style="height: calc(100vh - 120px);">
+            <!-- Narrow left transcript pane (fixed to left edge) -->
+            <div id="transcriptPane" class="overflow-y-auto p-3 bg-white border rounded-lg" style="position:fixed; left:12px; top:84px; width: 220px; height: calc(100vh - 160px); z-index:40;">
+                <div class="text-sm text-gray-500 mb-3">Transcript (AI questions on the left, your answers on the right)</div>
+                <!-- messages will be appended here -->
+            </div>
 
-        <!-- Minimal voice-only UI: a perfectly round large circle centered on the page -->
-        <div class="mt-3 flex items-center justify-center flex-col gap-4" style="height: calc(100vh - 120px);">
-            <div id="voiceCircle" class="flex items-center justify-center select-none relative" style="position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); width:min(86vmin, 1000px); height:min(86vmin, 1000px); border-radius:50%; z-index:20; box-shadow:0 12px 48px rgba(0,0,0,0.12); background:#f97316;">
-                <div class="absolute top-6 left-6 w-12 h-12 rounded-full bg-white flex items-center justify-center text-sm text-gray-700 font-semibold">AI</div>
-                <div class="flex flex-col items-center gap-4 text-center">
-                    <div id="voiceLabel" class="text-4xl font-semibold text-white" style="text-shadow:0 2px 6px rgba(0,0,0,0.25)">Tap to start</div>
-                    <div id="companyLabel" class="text-xl text-white/95" style="text-shadow:0 1px 3px rgba(0,0,0,0.18)">{{ interview.company|default:"Company" }} Interviewer</div>
+            <!-- Video / controls pane -->
+            <div id="videoPanel" class="flex-1 flex flex-col items-center justify-start gap-4 p-4 bg-gray-50 border rounded-lg" style="position:relative; margin-left:244px;">
+                <div class="w-full flex justify-between items-center">
+                    <div id="companyLabel" class="text-lg font-semibold">{{ interview.company|default:"Company" }} Interviewer</div>
+                    <div id="statusArea" class="text-sm text-gray-500">Ready</div>
+                </div>
+
+                <div style="width:100%; display:flex; align-items:center; justify-content:center;">
+                    <video id="selfVideo" autoplay muted playsinline style="width:100%; height: calc(100vh - 120px); background:#000; border-radius:6px; object-fit:cover;" poster="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1280' height='720'><rect width='100%' height='100%' fill='%23000' /><text x='50%' y='50%' fill='%23fff' font-size='20' font-family='Arial' text-anchor='middle' dominant-baseline='middle'>No camera</text></svg>"></video>
+                </div>
+
+                <div class="w-full flex items-center justify-center gap-3 mt-2">
+                    <button id="stopInterviewButton" class="hidden bg-red-600 text-white px-5 py-2 rounded-full shadow-lg" style="pointer-events:auto;">Stop Interview</button>
                 </div>
             </div>
-            <!-- Stop interview button (fixed bottom center, visible when shown) -->
-            <button id="stopInterviewButton" class="hidden fixed bottom-10 left-1/2 transform -translate-x-1/2 bg-red-600 text-white px-6 py-3 rounded-full shadow-lg z-30" style="pointer-events:auto;">Stop Interview</button>
-            <div id="statusArea" class="text-gray-400 text-sm mt-4"></div>
         </div>
 
         <!-- Full-screen one-tap overlay to grant autoplay/mic permission (removed after first tap) -->
@@ -36,12 +44,13 @@
 // Auto play-record loop: play AI audio, then record user automatically, submit, repeat
 let mediaRecorder = null;
 let audioChunks = [];
-const chatBox = document.getElementById('chatBox');
-const voiceCircle = document.getElementById('voiceCircle');
-const voiceLabel = document.getElementById('voiceLabel');
+const transcriptPane = document.getElementById('transcriptPane');
+const selfVideo = document.getElementById('selfVideo');
+const videoPanel = document.getElementById('videoPanel');
 const stopInterviewButton = document.getElementById('stopInterviewButton');
 const statusArea = document.getElementById('statusArea');
 let stopRequested = false;
+let localStreamForVideo = null;
 
 async function sendAudioToServer(audioBlob) {
     const formData = new FormData();
@@ -60,47 +69,44 @@ async function sendAudioToServer(audioBlob) {
             throw new Error(data.error);
         }
 
-        // Display user's transcribed message
+        // Display user's transcribed message in transcriptPane (right-aligned)
         if (data.transcript) {
-            chatBox.innerHTML += `
-                <div class="flex justify-end">
-                    <div class="inline-block bg-gray-100 px-4 py-2 rounded-lg max-w-[80%]">
-                        ${data.transcript}
-                    </div>
-                </div>`;
-            chatBox.scrollTop = chatBox.scrollHeight;
+            const userHtml = document.createElement('div');
+            userHtml.className = 'w-full flex justify-end mb-2';
+            userHtml.innerHTML = `<div class="inline-block bg-gray-100 px-4 py-2 rounded-lg max-w-[80%]">${data.transcript}</div>`;
+            transcriptPane.appendChild(userHtml);
+            transcriptPane.scrollTop = transcriptPane.scrollHeight;
         }
 
-        // Display AI response
+        // Display AI response in transcriptPane (left-aligned)
         if (data.response) {
-            chatBox.innerHTML += `
-                <div class="flex justify-start">
-                    <div class="inline-block bg-blue-50 px-4 py-2 rounded-lg max-w-[80%]">
-                        ${data.response}
-                    </div>
-                </div>`;
-            chatBox.scrollTop = chatBox.scrollHeight;
+            const aiHtml = document.createElement('div');
+            aiHtml.className = 'w-full flex justify-start mb-2';
+            aiHtml.innerHTML = `<div class="inline-block bg-blue-50 px-4 py-2 rounded-lg max-w-[80%]">${data.response}</div>`;
+            transcriptPane.appendChild(aiHtml);
+            transcriptPane.scrollTop = transcriptPane.scrollHeight;
         }
 
         // Play audio response if available (await playback before recording)
         if (data.audio) {
-            voiceLabel.textContent = 'Speaking...';
-            voiceCircle.classList.add('bg-orange-600');
+            // Indicate AI is speaking by adding a 'speaking' style to videoPanel
+            statusArea.textContent = 'AI speaking...';
+            videoPanel.classList.add('ai-speaking');
             await playAudioBase64(data.audio);
-            voiceCircle.classList.remove('bg-orange-600');
+            videoPanel.classList.remove('ai-speaking');
+            statusArea.textContent = '';
         }
 
         // Handle interview completion
         if (data.completed_id) {
-            chatBox.innerHTML += `
-                <div class="text-green-600 mt-4">
-                    Redirecting you to detailed feedback...
-                </div>`;
-            chatBox.scrollTop = chatBox.scrollHeight;
-            
+            const doneHtml = document.createElement('div');
+            doneHtml.className = 'text-green-600 mt-4';
+            doneHtml.textContent = 'Redirecting you to detailed feedback...';
+            transcriptPane.appendChild(doneHtml);
+            transcriptPane.scrollTop = transcriptPane.scrollHeight;
             setTimeout(() => {
                 window.location.href = `/interview/feedback/${data.completed_id}/`;
-            }, 1500);
+            }, 1200);
         }
 
     } catch (error) {
@@ -126,15 +132,21 @@ function playAudioBase64(base64Data) {
 function startAutoRecording() {
     return new Promise(async (resolve, reject) => {
         try {
-            voiceLabel.textContent = 'Recording...';
+            // Acquire audio only for MediaRecorder, but also ensure the user's webcam is displaying
+            statusArea.textContent = 'Recording...';
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            // If video not already started, get user video for preview only
+            // video stream is prepared on start; ensure element plays if available
+            if (localStreamForVideo) {
+                try { await selfVideo.play(); } catch(e) { /* autoplay policies may prevent play; it's fine */ }
+            }
             const audioContext = new (window.AudioContext || window.webkitAudioContext)();
             const source = audioContext.createMediaStreamSource(stream);
             const analyser = audioContext.createAnalyser();
             analyser.fftSize = 2048;
             source.connect(analyser);
 
-            // Prefer explicit audio/webm with opus codec where available
+            // Prefer explicit audio/webm with opus codec where available (audio-only stream)
             const mimeType = 'audio/webm;codecs=opus';
             try {
                 mediaRecorder = new MediaRecorder(stream, { mimeType });
@@ -204,7 +216,7 @@ function startAutoRecording() {
                     mediaRecorder.stop();
                     await stoppedPromise;
                     stream.getTracks().forEach(t => t.stop());
-                    voiceLabel.textContent = 'Stopping...';
+                    statusArea.textContent = 'Stopping...';
                     resolve(new Blob(audioChunks, { type: 'audio/webm' }));
                     return;
                 }
@@ -216,7 +228,7 @@ function startAutoRecording() {
                     await stoppedPromise;
                     // stop tracks
                     stream.getTracks().forEach(t => t.stop());
-                    voiceLabel.textContent = 'Processing...';
+                    statusArea.textContent = 'Processing...';
                     resolve(new Blob(audioChunks, { type: 'audio/webm' }));
                     return;
                 }
@@ -240,14 +252,40 @@ window.addEventListener("DOMContentLoaded", () => {
     startButton.addEventListener('click', async () => {
         console.log('Start tapped: requesting microphone');
         // Remove overlay immediately
-        gestureOverlay.remove();
-        voiceLabel.textContent = 'Preparing...';
+    gestureOverlay.remove();
+    statusArea.textContent = 'Preparing...';
 
         try {
-            // Pre-warm getUserMedia permissions so later recording is allowed
-            const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            // Close tracks immediately; actual recording will re-open and use permission
-            micStream.getTracks().forEach(t => t.stop());
+            // Pre-warm getUserMedia permissions for audio and request video for preview
+            try {
+                const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                micStream.getTracks().forEach(t => t.stop());
+            } catch (e) {
+                console.warn('Could not pre-warm microphone:', e);
+            }
+
+            try {
+                statusArea.textContent = 'Requesting camera access...';
+                localStreamForVideo = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+                selfVideo.srcObject = localStreamForVideo;
+                try { await selfVideo.play(); } catch(e) { /* ignore autoplay errors */ }
+                statusArea.textContent = 'Camera active';
+                // log small note in transcript pane
+                const note = document.createElement('div');
+                note.className = 'text-xs text-gray-400 mb-2';
+                note.textContent = 'Camera access granted.';
+                transcriptPane.appendChild(note);
+            } catch (e) {
+                console.warn('Could not access webcam on start:', e);
+                statusArea.textContent = 'No camera available';
+                // show placeholder error block in videoPanel
+                const err = document.createElement('div');
+                err.className = 'w-full p-4 text-center text-red-600 bg-white rounded';
+                err.textContent = 'No camera available or permission denied. You can proceed with audio only.';
+                // remove existing video element to avoid black rectangle
+                try { selfVideo.style.display = 'none'; } catch(e) {}
+                videoPanel.appendChild(err);
+            }
 
             // Now request initial greeting from server
             const initResp = await fetch("", {
@@ -260,12 +298,28 @@ window.addEventListener("DOMContentLoaded", () => {
             });
             const initData = await initResp.json();
 
+            // Append initial AI question to transcript pane (left-aligned)
+            try {
+                if (initData.response) {
+                    const aiHtmlInit = document.createElement('div');
+                    aiHtmlInit.className = 'w-full flex justify-start mb-2';
+                    aiHtmlInit.innerHTML = `<div class="inline-block bg-blue-50 px-4 py-2 rounded-lg max-w-[80%]">${initData.response}</div>`;
+                    transcriptPane.appendChild(aiHtmlInit);
+                    transcriptPane.scrollTop = transcriptPane.scrollHeight;
+                }
+            } catch (e) {
+                console.warn('Could not append initial AI message to transcript:', e);
+            }
+
             // Do not display text (voice-only)
             console.log('Initial data received', initData);
 
             if (initData.audio) {
-                voiceLabel.textContent = 'Speaking...';
+                statusArea.textContent = 'AI speaking...';
+                videoPanel.classList.add('ai-speaking');
                 await playAudioBase64(initData.audio);
+                videoPanel.classList.remove('ai-speaking');
+                statusArea.textContent = '';
             }
 
             // Show stop button
@@ -274,8 +328,8 @@ window.addEventListener("DOMContentLoaded", () => {
 
             // Wire stop button
             stopInterviewButton.addEventListener('click', async () => {
-                stopRequested = true;
-                statusArea.textContent = 'Stopping...';
+                    stopRequested = true;
+                    statusArea.textContent = 'Stopping...';
                 // stop recorder immediately if active
                 try {
                     if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
@@ -304,7 +358,7 @@ window.addEventListener("DOMContentLoaded", () => {
                     const audioBlob = await startAutoRecording();
                     if (stopRequested) break;
                     console.log('Recorded blob', audioBlob);
-                    voiceLabel.textContent = 'Thinking...';
+                    statusArea.textContent = 'Thinking...';
                     await sendAudioToServer(audioBlob);
                     // sendAudioToServer will play the returned audio and handle redirect on completion
                 } catch (err) {
@@ -318,7 +372,7 @@ window.addEventListener("DOMContentLoaded", () => {
             statusArea.textContent = stopRequested ? 'Interview stopped' : '';
         } catch (err) {
             console.error('Unable to start interview:', err);
-            voiceLabel.textContent = 'Error';
+            statusArea.textContent = 'Error';
         }
     });
 });
