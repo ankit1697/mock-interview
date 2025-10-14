@@ -3,3 +3,5 @@ django-app/venv
 backend/__pycache__
 
 *.pyc
+
+.env
