@@ -12,10 +12,11 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 
 from pathlib import Path
 import os
-from dotenv import load_dotenv, find_dotenv
-import os
+from dotenv import load_dotenv
 
-load_dotenv(find_dotenv(), override=True)
+# Load .env from project root (two levels up from settings.py)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+load_dotenv(PROJECT_ROOT / '.env', override=True)
 
 
 
