@@ -1,6 +1,11 @@
 from django.urls import path
+from django.shortcuts import redirect
 from .views import *
 
+
+def direct_google_login(request):
+    """Redirect directly to Google OAuth login"""
+    return redirect('/accounts/google/login/?process=login&next=/')
 
 urlpatterns = [
     path('', index, name='index'),
@@ -13,5 +18,7 @@ urlpatterns = [
     path('interview/feedback/<int:completed_id>/', interview_feedback, name='interview_feedback'),
     # Ephemeral realtime session (server issues short-lived credentials)
     path('realtime/session/', create_realtime_session, name='create_realtime_session'),
+    # Direct Google login
+    path('login/', direct_google_login, name='direct_google_login'),
 
 ]

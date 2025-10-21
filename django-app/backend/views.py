@@ -168,7 +168,6 @@ def extract_text_from_pdf(path):
 @csrf_exempt
 def interview_chat(request, interview_id):
     interview = get_object_or_404(Interview, id=interview_id, user=request.user)
-    interview_type = interview.interview_type
 
     session_key = f"session_{request.user.id}_{interview_id}"
     session = active_sessions.get(session_key)
@@ -177,7 +176,9 @@ def interview_chat(request, interview_id):
         resume = interview.resume
         job_description_text = interview.job_description or "N/A"
         company = interview.company or "N/A"
-        session = InterviewSession(resume, job_description_text, company)
+        role = interview.role or "data science role"
+        industry = interview.industry or "tech"
+        session = InterviewSession(resume, job_description_text, company, role, industry)
         active_sessions[session_key] = session
 
     if request.method == "POST":
@@ -254,7 +255,7 @@ def interview_chat(request, interview_id):
             })
 
         # Handle moving to next step
-        next_question = session.next_question(interview_type)
+        next_question = session.next_question()
         audio_response = text_to_speech(next_question)
 
         # Handle interview end

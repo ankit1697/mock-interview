@@ -295,6 +295,62 @@ Question : Give me top 5 recent non coding technical questions for data science 
 
 
 
+def generate_small_talk_question(structured_resume, structured_jd, company="", role="", industry="", question_number=1):
+    """
+    Generate small talk questions to warm up the interview before technical questions.
+    """
+    candidate_name = structured_resume.get("contact_info", {}).get("name", "")
+    
+    # Define small talk questions based on question number
+    small_talk_questions = {
+        1: f"Thanks for joining us today. How are you doing?",
+        2: f"Great to hear! I'm doing well, thank you for asking. So, what drew you to apply for this {role} role at {company}?",
+        3: f"That's really interesting! What excites you most about working in the {industry} industry?",
+        4: f"Wonderful! Before we dive into the technical aspects, could you walk me through your background and what you've been working on recently?"
+    }
+    
+    return small_talk_questions.get(question_number, "Tell me about yourself and your experience in data science.")
+
+
+def is_candidate_asking_question(user_response):
+    """
+    Check if the candidate is asking a question back to the interviewer.
+    """
+    question_indicators = [
+        "how are you", "how do you", "what about you", "and you", "yourself",
+        "tell me about", "can you tell", "what do you think", "do you",
+        "are you", "will you", "would you", "could you", "have you",
+        "did you", "were you", "is it", "was it", "does it", "did it"
+    ]
+    
+    response_lower = user_response.lower()
+    
+    # Check for question marks
+    has_question_mark = "?" in user_response
+    
+    # Check for question indicators
+    has_indicators = any(indicator in response_lower for indicator in question_indicators)
+    
+    return has_question_mark or has_indicators
+
+
+def generate_interviewer_response(candidate_question, company="", role=""):
+    """
+    Generate a natural response when the candidate asks the interviewer a question.
+    """
+    responses = [
+        f"Great question! I'm doing well, thank you for asking. I've been with {company} for a while now and I really enjoy working on challenging {role} projects. But let's focus on you - ",
+        f"Thanks for asking! I'm doing great. I love being part of the {company} team and working on interesting {role} problems. Now, back to you - ",
+        f"Good question! I'm doing well, thanks. I find the {role} work here at {company} really engaging. Speaking of which - ",
+        f"Thanks for asking! I'm doing fine. I've been enjoying my time at {company} working on {role} projects. But I'm curious about your experience - ",
+        f"Thanks for asking! I'm doing well. I've been at {company} for a few years now and I really enjoy the {role} challenges we work on. But enough about me - ",
+        f"Good question! I'm doing great, thanks for asking. I find the {role} work at {company} really rewarding. Now, I'd love to hear more about your background - "
+    ]
+    
+    import random
+    return random.choice(responses)
+
+
 def generate_initial_question(structured_resume, structured_jd, company=""):
     """Generate the initial interview question based on structured resume and job description"""
     # Prepare resume and job description in a structured format
@@ -376,7 +432,7 @@ Guidelines for your question:
     return initial_question, messages
 
 
-def generate_dynamic_question(messages, user_response, personal_profile=None, interview_type="general"):
+def generate_dynamic_question(messages, user_response, personal_profile=None):
     """Generate a dynamic follow-up question based on the user's response and interview type"""
     # Add the user's response to the conversation
     messages.append({"role": "user", "content": user_response})
@@ -447,10 +503,12 @@ def generate_dynamic_question(messages, user_response, personal_profile=None, in
 
 
 class InterviewSession:
-    def __init__(self, resume_obj, job_description_text, company=None):
+    def __init__(self, resume_obj, job_description_text, company=None, role=None, industry=None):
         self.resume_obj = resume_obj  # Save the Resume object
         self.job_description_text = job_description_text or "N/A"
         self.company = company or "N/A"
+        self.role = role or "data science role"
+        self.industry = industry or "tech"
 
         self.structured_resume = {
             "contact_info": {
@@ -478,16 +536,19 @@ class InterviewSession:
         self.total_questions_asked = 0
         self.messages = []
         self.current_question = None
+        self.small_talk_phase = True
+        self.small_talk_question_number = 1
 
 
 
     def start_interview(self):
-        greeting = f"Hi {self.personal_profile.get('name', 'there')}, nice to meet you! Let's get started with your interview for the {self.personal_profile.get('role', 'data science')} role at {self.company}"
-        initial_question, self.messages = generate_initial_question(self.structured_resume, self.structured_jd, self.company)
-        self.current_question = initial_question
-        self.interview_data.append({"question": initial_question, "answer": None, "evaluation": None})
+        greeting = f"Hi {self.personal_profile.get('name', 'there')}, nice to meet you! Let's get started with your interview for the {self.role} role at {self.company}"
+        # Start with small talk question
+        small_talk_question = generate_small_talk_question(self.structured_resume, self.structured_jd, self.company, self.role, self.industry, self.small_talk_question_number)
+        self.current_question = small_talk_question
+        self.interview_data.append({"question": small_talk_question, "answer": None, "evaluation": None})
         self.total_questions_asked += 1
-        return f"{greeting}\n\n{initial_question}"
+        return f"{greeting}\n\n{small_talk_question}"
 
     def is_clarification_request(self, user_response):
         clarification_prompt = f"""
@@ -597,6 +658,29 @@ Candidate's raw reply: {answer}
             clarification_response = self.rephrase_current_question()
             return clarification_response, "Question clarified."
 
+        # Handle candidate questions during small talk phase
+        if self.small_talk_phase and is_candidate_asking_question(answer):
+            # Save the candidate's answer
+            self.interview_data[self.current_question_idx]["answer"] = answer
+            
+            # Generate interviewer response
+            interviewer_response = generate_interviewer_response(answer, self.company, self.personal_profile.get('role', 'data science role'))
+            
+            # Add the interaction to messages
+            try:
+                self.messages.append({"role": "assistant", "content": self.current_question})
+                self.messages.append({"role": "user", "content": answer})
+            except Exception:
+                pass
+            
+            # Store evaluation for small talk
+            self.interview_data[self.current_question_idx]["evaluation"] = "Small talk conversation - candidate asked a question back"
+            
+            # Move to next question
+            self.current_question_idx += 1
+            
+            return interviewer_response, "Small talk conversation continued."
+
         # Save the raw answer
         self.interview_data[self.current_question_idx]["answer"] = answer
 
@@ -643,8 +727,8 @@ Candidate's raw reply: {answer}
         )
         return 'no' in check_response.choices[0].message.content.lower()
 
-    def next_question(self, interview_type):
-        if self.total_questions_asked >= 5:
+    def next_question(self):
+        if self.total_questions_asked >= 8:  # Increased total questions to accommodate small talk
             return "We've reached the end of your interview. Thank you for your time!"
 
         # Add last assistant/user interaction to memory
@@ -654,12 +738,24 @@ Candidate's raw reply: {answer}
                 self.messages.append({"role": "assistant", "content": last_q["question"]})
                 self.messages.append({"role": "user", "content": last_q["answer"]})
 
-        if self.follow_up_count < 3 and self.should_ask_follow_up(self.interview_data[self.current_question_idx - 1]["answer"]):
-            next_q = generate_dynamic_question(self.messages.copy(), self.interview_data[self.current_question_idx - 1]["answer"], self.personal_profile, interview_type)
-            self.follow_up_count += 1
-        else:
-            next_q, _ = generate_initial_question(self.structured_resume, self.structured_jd)
+        # Handle small talk phase (first 4 questions)
+        if self.small_talk_phase and self.small_talk_question_number < 4:
+            self.small_talk_question_number += 1
+            next_q = generate_small_talk_question(self.structured_resume, self.structured_jd, self.company, self.role, self.industry, self.small_talk_question_number)
             self.follow_up_count = 0
+        elif self.small_talk_phase and self.small_talk_question_number == 4:
+            # Transition to technical questions
+            self.small_talk_phase = False
+            next_q, self.messages = generate_initial_question(self.structured_resume, self.structured_jd, self.company)
+            self.follow_up_count = 0
+        else:
+            # Technical questions phase
+            if self.follow_up_count < 3 and self.should_ask_follow_up(self.interview_data[self.current_question_idx - 1]["answer"]):
+                next_q = generate_dynamic_question(self.messages.copy(), self.interview_data[self.current_question_idx - 1]["answer"], self.personal_profile)
+                self.follow_up_count += 1
+            else:
+                next_q, _ = generate_initial_question(self.structured_resume, self.structured_jd, self.company)
+                self.follow_up_count = 0
 
         # Set current question
         self.current_question = next_q
