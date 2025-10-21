@@ -54,6 +54,9 @@ We aim to build a platform where anyone can **practice, learn, and grow**.
 - Track your **progress across sessions**, identifying improvement areas over time.
 
 ---
+## Overview
+
+<img src="assets/prism_working.png" width="400" alt="Logo">
 
 # Setting up django app
 
