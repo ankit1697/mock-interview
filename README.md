@@ -1,4 +1,9 @@
-# mock-interview
+<p align="center">
+  <img src="assets/logo1.png" width="400" alt="Logo">
+</p>
+
+
+# PRISM: Personal Response and Interview Simulation Model
 
 # Setting up django app
 
