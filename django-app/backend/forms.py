@@ -62,7 +62,7 @@ class ResumeFormForInterview(ResumeUploadForm):
 class InterviewForm(forms.ModelForm):
 	class Meta:
 		model = Interview
-		fields = ['company', 'job_description', 'resume', 'interview_type', 'duration']
+		fields = ['company', 'job_description', 'resume', 'role', 'industry']
 		widgets = {
 			'company': forms.TextInput(attrs={
 				'class': 'w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-orange-500 focus:ring-2',
@@ -76,11 +76,13 @@ class InterviewForm(forms.ModelForm):
 			'resume': forms.Select(attrs={
 				'class': 'w-full border border-gray-300 rounded px-3 py-2 text-sm'
 			}),
-			'interview_type': forms.Select(attrs={
-				'class': 'w-full border border-gray-300 rounded px-3 py-2 text-sm'
+			'role': forms.TextInput(attrs={
+				'class': 'w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-orange-500 focus:ring-2',
+				'placeholder': 'e.g. Data Scientist, Software Engineer'
 			}),
-			'duration': forms.Select(attrs={
-				'class': 'w-full border border-gray-300 rounded px-3 py-2 text-sm'
+			'industry': forms.TextInput(attrs={
+				'class': 'w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-orange-500 focus:ring-2',
+				'placeholder': 'e.g. Technology, Healthcare, Finance'
 			}),
 		}
 

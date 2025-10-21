@@ -48,12 +48,12 @@ class Interview(models.Model):
 	company = models.CharField(max_length=255)
 	job_description = models.CharField(max_length=2000,blank=True)
 	resume = models.ForeignKey(Resume, on_delete=models.SET_NULL, null=True, blank=True)
-	interview_type = models.CharField(max_length=20, choices=INTERVIEW_TYPES)
-	duration = models.PositiveIntegerField(choices=DURATION_CHOICES)
+	role = models.CharField(max_length=255, blank=True, null=True)
+	industry = models.CharField(max_length=255, blank=True, null=True)
 	created_at = models.DateTimeField(auto_now_add=True)
 
 	def __str__(self):
-		return f"{self.user.username} - {self.company} ({self.get_interview_type_display()})"
+		return f"{self.user.username} - {self.company} ({self.role or 'Interview'})"
 
 
 class CompletedInterview(models.Model):
