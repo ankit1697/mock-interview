@@ -3,7 +3,7 @@
 <h3 align="center"> A product by Dialog</h3>
 
 <p align="center">
-  <img src="assets/1.png" width="400" alt="Logo">
+  <img src="assets/2.png" width="400" alt="Logo">
 </p>
 
 ## Project Motivation
