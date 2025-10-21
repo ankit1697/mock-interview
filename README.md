@@ -9,7 +9,9 @@
 ## Project Motivation
 
 > *“I read all the guides, practiced questions from LeetCode, and even watched mock interview videos, but the actual interview turned out to be very different.”*  
+
 > *“I had practiced multiple technical questions. Yet, when the real interview started, I froze.”*  
+
 > *“If only I could practice with an AI that actually understood my resume, asked realistic questions, and helped me improve.”*  
 
 
@@ -56,7 +58,7 @@ We aim to build a platform where anyone can **practice, learn, and grow**.
 ---
 ## Overview
 
-<img src="assets/prism_working.png" width="400" alt="Logo">
+<img src="assets/prism_working.png" alt="How PRISM works">
 
 # Setting up django app
 
