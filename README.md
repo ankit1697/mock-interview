@@ -60,6 +60,89 @@ We aim to build a platform where anyone can **practice, learn, and grow**.
 
 <img src="assets/prism_working.png" alt="How PRISM works">
 
+## 🧠 Project
+
+PRISM integrates multiple AI components, namely <b>retrieval, orchestration, and evaluation</b> to replicate the depth and realism of an actual interview. Each module contributes to creating a personalized, adaptive, and feedback-driven experience.
+
+#### 1. Resume Parsing & Candidate Profiling
+
+ - Dedicated user profile section to upload multiple resumes
+ - Uses OpenAI GPT-4o to extract name, professional summary, core skills and project domains, experience, industry exposure (e.g., healthcare, retail, fintech)
+ - The parsed data is structured as a JSON profile that feeds directly into the Question Selection Engine (QSE).
+ - This ensures every question aligns with the candidate’s unique background.
+
+#### 2. Building Our Data Science Corpus
+
+A strong question foundation requires a high-quality knowledge base.
+
+ - PRISM maintains a custom corpus of curated data science content:
+ - Technical articles from GeeksforGeeks, Towards Data Science, and other reliable sources.
+ - A Q-A dataset compiled from curated interview transcripts and technical discussions.
+ - 20+ real mock interviews (conducted internally) containing question-answer-feedback triples.
+ - Corpus stored and indexed in Pinecone Vector DB with OpenAI embeddings (text-embedding-ada-002), enabling semantic retrieval via RAG (Retrieval-Augmented Generation).
+
+<b>Purpose:</b>
+To ensure every question, follow-up, and feedback generated is grounded in real data science knowledge and authentic interview context.
+
+#### 3. Question Selection Engine (QSE)
+
+The QSE is responsible for generating, retrieving, and sequencing questions dynamically during an interview.
+
+How it works:
+ - Reads the candidate’s resume JSON and extracts relevant skills, projects, and domains.
+ - Performs a live web scroll using the Perplexity API, fetching the most recent questions asked for the chosen company, role, or industry (e.g., Google, Healthcare, Retail).
+ - Retrieves semantically similar questions from the RAG corpus using Pinecone.
+ - Generates a mix of <b>Resume-based questions, Technical concept questions, Live questions using Perplexity’s recent web data</b>
+ - Dynamically generates follow-up questions, conditioned on the candidate’s previous answers.
+
+Output:
+A structured interview plan with 12–15 primary questions, each optionally followed by up to 3 dynamic follow-ups.
+
+Tech stack:
+OpenAI GPT-4o, Pinecone, Perplexity API, LangChain, Python
+
+#### 4. Interview Orchestrator
+
+The Interview Orchestrator manages the flow between modules, ensuring that the conversation remains adaptive and context-aware.
+
+ - Monitors the candidate’s answers and dynamically adjusts difficulty and topic coverage.
+ - Keeps track of conversation state, context tokens, and progress.
+ - Decides whether to:
+  - Ask a follow-up question
+  - Switch topics
+  - Move to behavioral or wrap-up questions
+- Sends candidate responses to the Feedback Engine asynchronously for live evaluation.
+
+This is the “brain” that connects all components, maintaining continuity and realism throughout the session.
+
+#### 5. Feedback Engine
+
+The Feedback Engine provides personalized, structured, and actionable feedback for every question.
+
+Components:
+ - Rubric Files: Separate rubrics for technical and behavioral questions. Each rubric defines evaluation criteria (e.g., Technical Accuracy, Relevance, Depth, Communication, Confidence) and corresponding weights.
+ - Concept Weightages: Key sub-concepts within each domain (e.g., for Logistic Regression, cost function > AUC > regularization). Used to highlight missing key ideas in the candidate’s response.
+ - Two-Stage Evaluation:
+   - Stage 1 (Numeric Scoring): AI scores each answer on each rubric dimension, generating a structured JSON of scores and missing keywords.
+   - Stage 2 (Humanized Feedback Generation): Converts numeric scores into natural-language feedback that’s empathetic, constructive, and confidence-building.
+
+ - Vision-Based Feedback (Experimental):
+   - Integrates Google MediaPipe to track facial and body signals during interviews.
+   - Features tracked: eye-blink rate, gaze direction, posture stability, and gesture confidence.
+   - These are mapped to communication-related rubric scores (e.g., Confidence, Engagement).
+   - Candidate can review specific video timestamps from their interview
+
+#### 6. Using Our 20+ Mock Interviews
+
+Our repository of 20+ real mock interviews provides the foundation for:
+ - Fine-tuning the interview flow: guiding the Orchestrator to replicate natural interview pacing, tone, and follow-up depth.
+ - Improving question quality: capturing authentic phrasing patterns and realistic transitions.
+ - Feedback calibration: aligning GPT-generated scores and language with real human evaluator comments.
+ - Vision model validation: mapping detected facial and tonal features to real candidate feedback labels.
+
+These interviews make PRISM not just an AI interviewer, but an AI trained on real human interview behavior.
+
+
 # Setting up django app
 
 ```
