@@ -27,19 +27,35 @@ def display_incremental_evaluation(evaluation: Dict, latest_question_id: int) ->
     if not results:
         return
 
-    latest = next((entry for entry in results if entry.get("id") == latest_question_id), results[-1])
+    latest = next((entry for entry in results if entry.get("id") == latest_question_id), None)
+
+    if latest is None:
+        print("\nEvaluation Update:")
+        print(f"Question {latest_question_id} has not been evaluated yet.")
+        return
 
     print("\nEvaluation Update:")
-    print(f"Question {latest_question_id} rating: {latest['final_score']} ({latest['rating']})")
-    for key, value in latest["subscores"].items():
-        label = _format_dimension_name(key)
-        print(f"  {label}: {value}")
-    print(f"  Feedback note: {latest['feedback']}")
-    print(f"  Suggested improvement: {latest['suggested_improvement']}")
+    if latest.get("skipped"):
+        print(f"Question {latest_question_id} was an icebreaker and was not scored.")
+    else:
+        print(f"Question {latest_question_id} rating: {latest['final_score']} ({latest['rating']})")
+        for key, value in latest["subscores"].items():
+            label = _format_dimension_name(key)
+            print(f"  {label}: {value}")
+        print(f"  Feedback note: {latest['feedback']}")
+        print(f"  Technical feedback: {latest.get('technical_feedback')}")
+        print(f"  Suggested improvement: {latest['suggested_improvement']}")
+        example_answer = latest.get("example_answer")
+        if example_answer:
+            print("  Example answer:")
+            print(f"    {example_answer}")
 
-    print(
-        f"Overall so far: {evaluation['overall_score']} ({evaluation['overall_rating']})"
-    )
+    overall_score = evaluation.get("overall_score")
+    overall_rating = evaluation.get("overall_rating")
+    if overall_score is None:
+        print("Overall so far: Not enough evaluated questions yet.")
+    else:
+        print(f"Overall so far: {overall_score} ({overall_rating})")
 
 
 def display_final_summary(evaluation: Dict) -> None:
@@ -50,13 +66,30 @@ def display_final_summary(evaluation: Dict) -> None:
         return
 
     print("\nFinal Evaluation Summary:")
-    print(
-        f"Overall score: {evaluation['overall_score']} ({evaluation['overall_rating']})"
-    )
+    overall_score = evaluation.get("overall_score")
+    overall_rating = evaluation.get("overall_rating")
+    if overall_score is not None:
+        print(f"Overall score: {overall_score} ({overall_rating})")
+    else:
+        print("Overall score: Not rated (only icebreakers answered).")
+
     for entry in results:
+        if entry.get("skipped"):
+            continue
         print(
             f"- Question {entry['id']}: {entry['final_score']} ({entry['rating']})"
         )
+
+    overall_feedback = evaluation.get("overall_feedback") or {}
+    summary_text = overall_feedback.get("summary")
+    if summary_text:
+        print(f"\nOverall feedback: {summary_text}")
+
+    improvement_items = overall_feedback.get("areas_for_improvement") or []
+    if improvement_items:
+        print("Areas for improvement:")
+        for item in improvement_items:
+            print(f"- {item}")
 
 
 def generate_question(api_client: OpenAI, messages: List[Dict[str, str]]) -> str:
@@ -182,6 +215,7 @@ def main() -> None:
                 "id": question_counter,
                 "question": current_question,
                 "answer": answer,
+                "is_icebreaker": question_counter <= ICEBREAKER_COUNT,
             }
         )
 
@@ -191,6 +225,7 @@ def main() -> None:
             "interview_id": interview_id,
             "candidate_name": candidate_name,
             "questions": transcript,
+            "icebreaker_count": ICEBREAKER_COUNT,
         }
 
         latest_evaluation = evaluate_interview_json(evaluation_payload, use_llm=True)

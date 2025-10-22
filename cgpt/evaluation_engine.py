@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from dotenv import find_dotenv, load_dotenv
 from openai import OpenAI
@@ -26,6 +26,8 @@ RUBRIC_WEIGHTS = {
     "problem_solving": 0.15,
     "flow": 0.15,
 }
+
+SKIP_NOTE = "Icebreaker question — skipped for scoring."
 
 
 def map_score_to_label(score: float) -> str:
@@ -92,6 +94,47 @@ def default_heuristic_score(answer_text: str) -> Dict[str, float]:
     }
 
 
+def _fallback_technical_feedback(subscores: Dict[str, float]) -> str:
+    weakest = min(subscores.items(), key=lambda entry: entry[1])[0]
+    mapping = {
+        "technical_reasoning": (
+            "Dive deeper into the core mechanics and trade-offs. Reference concrete models,"
+            " data treatments, or evaluation math to strengthen the narrative."
+        ),
+        "accuracy": (
+            "Ground the answer with verifiable metrics, benchmarks, or validation steps to"
+            " demonstrate rigor."
+        ),
+        "confidence": (
+            "Deliver conclusions decisively and reduce hedging; highlight prior successes to"
+            " anchor your stance."
+        ),
+        "problem_solving": (
+            "Lay out the end-to-end plan explicitly—define the problem, outline alternatives,"
+            " and justify the chosen path."
+        ),
+        "flow": (
+            "Tighten the storytelling arc. Remove filler words and use transitions to keep the"
+            " interviewer oriented."
+        ),
+    }
+    return mapping.get(weakest, "Provide more detail where the interviewer is probing.")
+
+
+def _fallback_example_answer(question: str) -> str:
+    prompt = question.strip()
+    if not prompt:
+        return (
+            "A strong response should frame the challenge, detail the technical approach,"
+            " highlight tooling, and finish with measurable impact."
+        )
+    return (
+        "A high-scoring answer would: 1) frame the business or research context for the question"
+        "; 2) outline the analytical or modeling approach with tooling choices; 3) discuss key"
+        " metrics and validation; and 4) finish with measurable results or lessons learned."
+    )
+
+
 def _extract_json_candidate(text: str) -> Optional[Dict[str, float]]:
     try:
         return json.loads(text)
@@ -105,14 +148,24 @@ def _extract_json_candidate(text: str) -> Optional[Dict[str, float]]:
         return None
 
 
-def _score_with_llm(question: str, answer: str) -> Optional[Dict[str, float]]:
+def _score_and_feedback_with_llm(question: str, answer: str) -> Optional[Dict[str, Any]]:
     if CLIENT is None:
         return None
 
     prompt_system = (
-        "You are an expert interviewer evaluator. Score the candidate answer (0-5) on these "
-        "dimensions: Technical Reasoning, Accuracy, Confidence, Problem-Solving, Flow (anti-stuckness). "
-        "Return strict JSON with numeric scores and a short feedback string for each dimension."
+        "You are an expert interviewer evaluator for senior data science roles. For the provided"
+        " question and answer you must return strict JSON with this schema: {\n"
+        "  \"scores\": {\n"
+        "    \"technical_reasoning\": float 0-5,\n"
+        "    \"accuracy\": float 0-5,\n"
+        "    \"confidence\": float 0-5,\n"
+        "    \"problem_solving\": float 0-5,\n"
+        "    \"flow\": float 0-5\n"
+        "  },\n"
+        "  \"technical_feedback\": string (two to three sentences highlighting strengths and actionable improvements),\n"
+        "  \"example_answer\": string (a high-quality sample answer with clear structure and technical detail)\n"
+        "}.\n"
+        "Ensure the JSON is valid, without markdown fences, and keep the example answer grounded in the question."
     )
     prompt_user = f"Question: {question}\nAnswer: {answer}"
 
@@ -134,39 +187,170 @@ def _score_with_llm(question: str, answer: str) -> Optional[Dict[str, float]]:
     if not parsed:
         return None
 
+    scores = parsed.get("scores", parsed)
+    result: Dict[str, Any] = {
+        "scores": {
+            "technical_reasoning": float(
+                scores.get("technical_reasoning", scores.get("Technical Reasoning", 0.0))
+            ),
+            "accuracy": float(scores.get("accuracy", scores.get("Accuracy", 0.0))),
+            "confidence": float(scores.get("confidence", scores.get("Confidence", 0.0))),
+            "problem_solving": float(
+                scores.get("problem_solving", scores.get("Problem-Solving", 0.0))
+            ),
+            "flow": float(scores.get("flow", scores.get("Flow", 0.0))),
+        },
+        "technical_feedback": parsed.get("technical_feedback")
+        or parsed.get("Technical Feedback"),
+        "example_answer": parsed.get("example_answer")
+        or parsed.get("Example Answer"),
+    }
+
+    return result
+
+
+def _summarize_session_with_llm(
+    results: List[Dict[str, Any]],
+    candidate_name: Optional[str],
+) -> Optional[Dict[str, Any]]:
+    if CLIENT is None or not results:
+        return None
+
+    payload = {
+        "candidate_name": candidate_name or "the candidate",
+        "responses": [
+            {
+                "question": item.get("question"),
+                "answer": item.get("answer"),
+                "final_score": item.get("final_score"),
+                "rating": item.get("rating"),
+                "technical_feedback": item.get("technical_feedback"),
+            }
+            for item in results
+        ],
+    }
+
+    prompt_system = (
+        "You are an AI interview coach. Given scored interview responses, craft a concise"
+        " final evaluation: summarize overall performance with a constructive, strengths-first"
+        " tone and enumerate concrete focus areas for improvement. Respond with strict JSON"
+        " containing keys 'summary' (2-3 sentences) and 'areas_for_improvement' (array of 2-4"
+        " short bullet-worthy strings)."
+    )
+    prompt_user = json.dumps(payload)
+
+    try:
+        response = CLIENT.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": prompt_system},
+                {"role": "user", "content": prompt_user},
+            ],
+            temperature=0.3,
+            max_tokens=400,
+        )
+    except Exception:
+        return None
+
+    message = response.choices[0].message.content if response.choices else ""
+    parsed = _extract_json_candidate(message)
+    if not parsed:
+        return None
+
+    areas = parsed.get("areas_for_improvement") or parsed.get("AreasForImprovement")
+    if isinstance(areas, str):
+        areas = [areas]
+
     return {
-        "technical_reasoning": float(
-            parsed.get("Technical Reasoning", parsed.get("technical_reasoning", 0.0))
-        ),
-        "accuracy": float(parsed.get("Accuracy", parsed.get("accuracy", 0.0))),
-        "confidence": float(parsed.get("Confidence", parsed.get("confidence", 0.0))),
-        "problem_solving": float(
-            parsed.get("Problem-Solving", parsed.get("problem_solving", 0.0))
-        ),
-        "flow": float(parsed.get("Flow", parsed.get("flow", 0.0))),
+        "summary": parsed.get("summary") or parsed.get("Summary"),
+        "areas_for_improvement": areas or [],
+    }
+
+
+def _compile_overall_feedback(
+    results: List[Dict[str, Any]],
+    candidate_name: Optional[str],
+    use_llm: bool,
+) -> Dict[str, Any]:
+    if use_llm:
+        llm_summary = _summarize_session_with_llm(results, candidate_name)
+        if llm_summary:
+            return llm_summary
+
+    if not results:
+        return {
+            "summary": "No evaluative questions recorded; unable to compute overall feedback.",
+            "areas_for_improvement": [],
+        }
+
+    avg_score = sum(item.get("final_score", 0.0) for item in results) / len(results)
+    strongest = max(results, key=lambda item: item.get("final_score", 0.0))
+    weakest = min(results, key=lambda item: item.get("final_score", 0.0))
+
+    summary = (
+        f"Overall performance is rated {map_score_to_label(avg_score)} with an average score of"
+        f" {avg_score:.2f}. Maintain the strengths shown on '{strongest.get('question', 'key topics')}'."
+    )
+    areas = [
+        f"Revisit '{weakest.get('question', 'weaker topics')}' incorporating: {weakest.get('technical_feedback')}"
+    ]
+
+    return {
+        "summary": summary,
+        "areas_for_improvement": areas,
     }
 
 
 def evaluate_interview_json(interview: Dict, use_llm: bool = True) -> Dict:
     """Evaluate an interview transcript represented as a JSON-like dict."""
     questions: List[Dict] = interview.get("questions", [])
+    icebreaker_count = int(interview.get("icebreaker_count", 0))
     results: List[Dict] = []
 
-    for item in questions:
-        qid = item.get("id")
+    for index, item in enumerate(questions, start=1):
+        qid = item.get("id", index)
         question = item.get("question", "")
         answer = item.get("answer", "")
+        is_icebreaker = bool(item.get("is_icebreaker")) or (index <= icebreaker_count)
+
+        if is_icebreaker:
+            results.append(
+                {
+                    "id": qid,
+                    "question": question,
+                    "answer": answer,
+                    "skipped": True,
+                    "skip_reason": SKIP_NOTE,
+                    "technical_feedback": SKIP_NOTE,
+                    "example_answer": None,
+                    "subscores": {},
+                    "final_score": None,
+                    "rating": None,
+                    "feedback": SKIP_NOTE,
+                    "suggested_improvement": None,
+                }
+            )
+            continue
 
         subscores = default_heuristic_score(answer)
+        technical_feedback = _fallback_technical_feedback(subscores)
+        example_answer = _fallback_example_answer(question)
         feedback_note = "Heuristic scoring used (no API key or use_llm=False)."
 
         if use_llm and CLIENT is not None:
-            llm_scores = _score_with_llm(question, answer)
-            if llm_scores:
+            llm_result = _score_and_feedback_with_llm(question, answer)
+            if llm_result:
+                llm_scores = llm_result.get("scores", {})
                 subscores = {
-                    key: round(value, 2)
+                    key: round(float(value), 2)
                     for key, value in llm_scores.items()
                 }
+                technical_feedback = llm_result.get("technical_feedback", technical_feedback)
+                example_answer = llm_result.get("example_answer", example_answer)
+                if isinstance(technical_feedback, list):
+                    technical_feedback = " ".join(str(part) for part in technical_feedback)
+                if isinstance(example_answer, list):
+                    example_answer = " ".join(str(part) for part in example_answer)
                 feedback_note = "LLM-assisted scoring applied."
 
         final_score = aggregate_weighted_score(subscores)
@@ -190,19 +374,32 @@ def evaluate_interview_json(interview: Dict, use_llm: bool = True) -> Dict:
                 "rating": rating,
                 "feedback": feedback_note,
                 "suggested_improvement": recommendations[lowest_dimension],
+                "technical_feedback": technical_feedback,
+                "example_answer": example_answer,
+                "skipped": False,
             }
         )
 
+    evaluated_results = [item for item in results if not item.get("skipped")]
     overall_score = 0.0
-    if results:
-        overall_score = sum(item["final_score"] for item in results) / len(results)
+    overall_rating = "Not Rated"
+    if evaluated_results:
+        overall_score = sum(item["final_score"] for item in evaluated_results) / len(evaluated_results)
+        overall_rating = map_score_to_label(overall_score)
+
+    overall_feedback = _compile_overall_feedback(
+        evaluated_results,
+        candidate_name=interview.get("candidate_name"),
+        use_llm=use_llm,
+    ) if evaluated_results else None
 
     return {
         "interview_id": interview.get("interview_id"),
         "candidate_name": interview.get("candidate_name"),
         "results": results,
-        "overall_score": round(overall_score, 3),
-        "overall_rating": map_score_to_label(overall_score),
+        "overall_score": round(overall_score, 3) if evaluated_results else None,
+        "overall_rating": overall_rating,
+        "overall_feedback": overall_feedback,
     }
 
 
