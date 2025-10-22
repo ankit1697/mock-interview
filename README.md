@@ -45,7 +45,7 @@ Even skilled candidates often **underperform** in interviews because they lack a
 
 ---
 
-### 💡 The Vision
+### The Vision
 
 We aim to build a platform where anyone can **practice, learn, and grow**.
 
@@ -60,51 +60,7 @@ We aim to build a platform where anyone can **practice, learn, and grow**.
 
 <img src="assets/prism_working.png" alt="How PRISM works">
 
-## 🧠 Project
-
-#### 4. Interview Orchestrator
-
-The Interview Orchestrator manages the flow between modules, ensuring that the conversation remains adaptive and context-aware.
-
- - Monitors the candidate’s answers and dynamically adjusts difficulty and topic coverage.
- - Keeps track of conversation state, context tokens, and progress.
- - Decides whether to:
-  - Ask a follow-up question
-  - Switch topics
-  - Move to behavioral or wrap-up questions
-- Sends candidate responses to the Feedback Engine asynchronously for live evaluation.
-
-This is the “brain” that connects all components, maintaining continuity and realism throughout the session.
-
-#### 5. Feedback Engine
-
-The Feedback Engine provides personalized, structured, and actionable feedback for every question.
-
-Components:
- - Rubric Files: Separate rubrics for technical and behavioral questions. Each rubric defines evaluation criteria (e.g., Technical Accuracy, Relevance, Depth, Communication, Confidence) and corresponding weights.
- - Concept Weightages: Key sub-concepts within each domain (e.g., for Logistic Regression, cost function > AUC > regularization). Used to highlight missing key ideas in the candidate’s response.
- - Two-Stage Evaluation:
-   - Stage 1 (Numeric Scoring): AI scores each answer on each rubric dimension, generating a structured JSON of scores and missing keywords.
-   - Stage 2 (Humanized Feedback Generation): Converts numeric scores into natural-language feedback that’s empathetic, constructive, and confidence-building.
-
- - Vision-Based Feedback (Experimental):
-   - Integrates Google MediaPipe to track facial and body signals during interviews.
-   - Features tracked: eye-blink rate, gaze direction, posture stability, and gesture confidence.
-   - These are mapped to communication-related rubric scores (e.g., Confidence, Engagement).
-   - Candidate can review specific video timestamps from their interview
-
-#### 6. Using Our 20+ Mock Interviews
-
-Our repository of 20+ real mock interviews provides the foundation for:
- - Fine-tuning the interview flow: guiding the Orchestrator to replicate natural interview pacing, tone, and follow-up depth.
- - Improving question quality: capturing authentic phrasing patterns and realistic transitions.
- - Feedback calibration: aligning GPT-generated scores and language with real human evaluator comments.
- - Vision model validation: mapping detected facial and tonal features to real candidate feedback labels.
-
-These interviews make PRISM not just an AI interviewer, but an AI trained on real human interview behavior.
-
-
-## 🧠 Project
+## Project
 
 PRISM integrates multiple AI components, namely <b>retrieval, orchestration, and evaluation</b> to replicate the depth and realism of an actual interview. Each module contributes to creating a personalized, adaptive, and feedback-driven experience.
 
@@ -331,9 +287,7 @@ PRISM is trained and validated on **20+ internally conducted mock interviews**, 
 ---
 
 
-
-
-# Setting up django app
+## Setting up the app
 
 ```
 python3.9 -m venv venv
