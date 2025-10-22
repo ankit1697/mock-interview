@@ -245,6 +245,7 @@ if score < 6 and followup_count < 3:
     next_question = generate_followup(answer, context)
 else:
     next_question = qse.get_next_topic_question()
+```
 
 ### 5. Feedback Engine
 
@@ -305,7 +306,7 @@ The **Feedback Engine** converts answers into structured evaluations, providing 
    - Aggregated session dashboard with topic-wise and rubric-wise averages.
 
 **Tech stack:**  
-`OpenAI GPT-4o`, `Google MediaPipe`, `OpenCV`, `NumPy`, `Pandas`, `Matplotlib`
+`Google MediaPipe`, `OpenCV`, `NumPy`, `Pandas`, `Matplotlib`
 
 ---
 
@@ -325,7 +326,7 @@ PRISM is trained and validated on **20+ internally conducted mock interviews**, 
 - Enhanced robustness of the vision-based feedback module.
 
 **Tech stack:**  
-`Python`, `OpenAI GPT-4o`, `Google MediaPipe`, `LangChain`, `Pandas`
+`Python`, `Google MediaPipe`, `LangChain`, `Pandas`
 
 ---
 
