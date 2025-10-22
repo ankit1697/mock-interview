@@ -1,0 +1,6 @@
+{
+  "questions": [
+    {"id":"q1","type":"technical","question":"Explain logistic regression.","answer":"Sigmoid + cross-entropy."},
+    {"id":"q2","type":"behavioral","question":"Tell me about a conflict at work.","answer":"Used STAR format briefly."}
+  ]
+}
