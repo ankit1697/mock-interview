@@ -6,6 +6,20 @@
   <img src="assets/2.png" width="400" alt="Logo">
 </p>
 
+## 📑 Table of Contents
+
+- [Project Motivation](#project-motivation)
+- [The Problem](#the-problem)
+- [Vision](#vision)
+- [Overview](#overview)
+- [Project](#project)
+  - [1. Resume Parsing & Candidate Profiling](#1-resume-parsing--candidate-profiling)
+  - [2. Data Science Knowledge Corpus](#2-data-science-knowledge-corpus)
+  - [3. Question Selection Engine (QSE)](#3-question-selection-engine-qse)
+  - [4. Interview Orchestrator](#4-interview-orchestrator)
+  - [5. Feedback Engine](#5-feedback-engine)
+  - [6. Real Mock Interviews Integration](#6-real-mock-interviews-integration)
+
 ## Project Motivation
 
 > *“I read all the guides, practiced questions from LeetCode, and even watched mock interview videos, but the actual interview turned out to be very different.”*  
@@ -45,7 +59,7 @@ Even skilled candidates often **underperform** in interviews because they lack a
 
 ---
 
-### The Vision
+### Vision
 
 We aim to build a platform where anyone can **practice, learn, and grow**.
 
