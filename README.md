@@ -19,6 +19,8 @@
   - [4. Interview Orchestrator](#4-interview-orchestrator)
   - [5. Feedback Engine](#5-feedback-engine)
   - [6. Real Mock Interviews Integration](#6-real-mock-interviews-integration)
+- [How it compares?](#-how-it-compares)
+- [Setting up the app](#-setting-up-the-app)
 
 ## Project Motivation
 
