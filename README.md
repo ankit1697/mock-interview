@@ -286,6 +286,10 @@ PRISM is trained and validated on **20+ internally conducted mock interviews**, 
 
 ---
 
+## How it compares?
+
+<img src="assets/prism_comparison.png" alt="Comparison">
+
 
 ## Setting up the app
 
