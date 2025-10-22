@@ -29,7 +29,7 @@ That’s the gap this **AI-powered mock interview platform** aims to fill. Helpi
 
 ---
 
-### 🎯 The Problem
+### The Problem
 
 Preparing for technical interviews is often **overwhelming and inefficient**.  
 
@@ -127,7 +127,7 @@ Provides RAG-based retrieval of both *factual* and *situational* questions, ensu
 
 ---
 
-### 🤖 3. Question Selection Engine (QSE)
+### 3. Question Selection Engine (QSE)
 
 The QSE dynamically generates, retrieves, and ranks interview questions based on **resume context**, **domain corpus**, and **live industry data**.
 
@@ -207,11 +207,11 @@ else:
 
 The **Feedback Engine** converts answers into structured evaluations, providing both **numeric** and **natural-language** insights.
 
-#### 🔹 Architecture
+#### Architecture
 
 
 
-#### 🔸 Components
+#### Components
 
 1. **Rubric Files**
    - YAML/JSON definitions for both *technical* and *behavioral* rubrics.  
@@ -266,7 +266,7 @@ The **Feedback Engine** converts answers into structured evaluations, providing 
 
 ---
 
-### 🎥 6. Real Mock Interviews Integration
+### 6. Real Mock Interviews Integration
 
 PRISM is trained and validated on **20+ internally conducted mock interviews**, each containing Q–A–Feedback–Score triples.
 
