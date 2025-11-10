@@ -217,7 +217,8 @@ def interview_chat(request, interview_id):
                 interview=interview,
                 user=request.user,
                 transcript=json.dumps(session.interview_data, indent=2),
-                summary=overall_summary
+                summary=overall_summary,
+                evaluation_results=session.full_evaluation  # Save the full evaluation JSON
             )
             active_sessions.pop(session_key, None)
 
@@ -269,7 +270,8 @@ def interview_chat(request, interview_id):
                 interview=interview,
                 user=request.user,
                 transcript=json.dumps(session.interview_data, indent=2),
-                summary=overall_summary
+                summary=overall_summary,
+                evaluation_results=session.full_evaluation  # Save the full evaluation JSON
             )
             active_sessions.pop(session_key, None)
 
