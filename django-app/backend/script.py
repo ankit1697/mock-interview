@@ -6,6 +6,7 @@ from openai import OpenAI
 from dotenv import load_dotenv, find_dotenv
 from PyPDF2 import PdfReader
 import requests
+from .evaluation_engine import evaluate_interview_json
 
 _dotenv_path = find_dotenv()
 load_dotenv(_dotenv_path, override=True)
@@ -308,23 +309,23 @@ def generate_initial_question(structured_resume, structured_jd, company=""):
                 "title": exp.get("title", ""),
                 "company": exp.get("company", ""),
                 "responsibilities": exp.get("responsibilities", [])[:3]
-            } for exp in structured_resume.get("experience", [])[:3]
+            } for exp in (structured_resume.get("experience") or [])[:3]
         ],
         "education": [
             {
                 "degree": edu.get("degree", ""),
                 "institution": edu.get("institution", "")
-            } for edu in structured_resume.get("education", [])
+            } for edu in (structured_resume.get("education") or [])
         ],
-        "skills": structured_resume.get("skills", {}),
-        "projects": [proj.get("name", "") for proj in structured_resume.get("projects") or []][:3]
+        "skills": structured_resume.get("skills") or {},
+        "projects": [proj.get("name", "") for proj in (structured_resume.get("projects") or [])][:3]
     }
 
     jd_summary = {
         "title": structured_jd.get("title", ""),
         "company": company,
-        "responsibilities": structured_jd.get("responsibilities", [])[:5],  # Limit to 5 key responsibilities
-        "required_skills": structured_jd.get("requirements", {}).get("required_skills", []),
+        "responsibilities": (structured_jd.get("responsibilities") or [])[:5],  # Limit to 5 key responsibilities
+        "required_skills": (structured_jd.get("requirements") or {}).get("required_skills", []),
         "industry": structured_jd.get("industry", "")
     }
 
@@ -478,6 +479,7 @@ class InterviewSession:
         self.total_questions_asked = 0
         self.messages = []
         self.current_question = None
+        self.full_evaluation = None  # Store complete evaluation results
 
 
 
@@ -528,30 +530,47 @@ class InterviewSession:
 
 
     def evaluate_answer(self, answer, question=None):
-        evaluation_prompt = f"""
-        You are an expert interviewer and evaluator for data science roles. Evaluate the following answer:
-
-        Question: {question if question else self.current_question}
-        Candidate's Answer: {answer}
-
-        Evaluate the candidate's answer on the following criteria:
-        1. Technical Accuracy (0-10)
-        2. Relevance (0-10)
-        3. Depth (0-10)
-        4. Communication (0-10)
-        5. Practical Application (0-10)
-
-        For each criterion, provide a score, a short feedback, and an improvement suggestion.
-        Then provide an Overall Score (0-100) with a 2-3 sentence summary.
-        """
-        response = openai_client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": "You are an expert AI interviewer and evaluator for data science roles."},
-                {"role": "user", "content": evaluation_prompt}
-            ]
-        )
-        return response.choices[0].message.content.strip()
+        """Evaluate a single answer using the new evaluation engine"""
+        # Use the new evaluation engine for a single question
+        interview_payload = {
+            "interview_id": f"session_{id(self)}",
+            "candidate_name": self.personal_profile.get("name", "Candidate"),
+            "questions": [{
+                "id": self.current_question_idx + 1,
+                "question": question if question else self.current_question,
+                "answer": answer,
+                "is_icebreaker": False,
+            }],
+            "icebreaker_count": 0,
+        }
+        
+        evaluation_result = evaluate_interview_json(interview_payload, use_llm=True)
+        
+        if evaluation_result and evaluation_result.get("results"):
+            result = evaluation_result["results"][0]
+            # Format the feedback in a readable way
+            feedback_parts = []
+            feedback_parts.append(f"Rating: {result.get('rating', 'N/A')} (Score: {result.get('final_score', 0)}/5)")
+            
+            subscores = result.get('subscores', {})
+            if subscores:
+                feedback_parts.append("\nDimension Scores:")
+                for dim, score in subscores.items():
+                    dim_name = dim.replace('_', ' ').title()
+                    feedback_parts.append(f"  - {dim_name}: {score}/5")
+            
+            tech_feedback = result.get('technical_feedback')
+            if tech_feedback:
+                feedback_parts.append(f"\nFeedback: {tech_feedback}")
+            
+            improvement = result.get('suggested_improvement')
+            if improvement:
+                feedback_parts.append(f"\nSuggested Improvement: {improvement}")
+            
+            return "\n".join(feedback_parts)
+        
+        # Fallback if evaluation fails
+        return "Answer recorded. Evaluation processing..."
 
     def handle_unknown_answer(self, answer):
         """When candidate says they don't know, produce a short hint and a simpler follow-up question."""
@@ -682,28 +701,67 @@ Candidate's raw reply: {answer}
         return "\n".join(feedbacks)
 
     def get_interview_summary(self):
-        # No need to re-evaluate here
-        transcript = ""
-        for i, q_data in enumerate(self.interview_data):
-            transcript += f"Q{i+1}: {q_data['question']}\nA{i+1}: {q_data['answer']}\nEvaluation: {q_data['evaluation']}\n---\n"
-
-        summary_prompt = f"""
-        You are an expert interviewer for data science roles. Analyze the following interview and provide:
-        1. Overall Assessment (2-3 paragraphs)
-        2. Key Strengths (3-5 bullet points)
-        3. Areas for Improvement (2-3 bullet points)
-        4. Technical Competency (1-10) with explanation
-        5. Communication Skills (1-10) with explanation
-
-        Interview:
-        {transcript}
-        """
-
-        summary_response = openai_client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": "You are an expert AI interviewer and evaluator for data science roles."},
-                {"role": "user", "content": summary_prompt}
-            ]
-        )
-        return summary_response.choices[0].message.content.strip()
+        """Generate comprehensive interview summary using the new evaluation engine"""
+        # Prepare questions for evaluation
+        questions_for_eval = []
+        for idx, q_data in enumerate(self.interview_data):
+            if q_data.get("answer"):  # Only include answered questions
+                questions_for_eval.append({
+                    "id": idx + 1,
+                    "question": q_data["question"],
+                    "answer": q_data["answer"],
+                    "is_icebreaker": idx < 2,  # First 2 questions are icebreakers
+                })
+        
+        # Get comprehensive evaluation
+        interview_payload = {
+            "interview_id": f"session_{id(self)}",
+            "candidate_name": self.personal_profile.get("name", "Candidate"),
+            "questions": questions_for_eval,
+            "icebreaker_count": 2,
+        }
+        
+        evaluation_result = evaluate_interview_json(interview_payload, use_llm=True)
+        
+        # Store the full evaluation result for later use
+        self.full_evaluation = evaluation_result
+        
+        # Format a human-readable summary
+        summary_parts = []
+        summary_parts.append("=" * 60)
+        summary_parts.append("INTERVIEW EVALUATION SUMMARY")
+        summary_parts.append("=" * 60)
+        
+        overall_score = evaluation_result.get("overall_score")
+        overall_rating = evaluation_result.get("overall_rating")
+        
+        if overall_score:
+            summary_parts.append(f"\nOverall Score: {overall_score}/5.0 ({overall_rating})")
+        
+        overall_feedback = evaluation_result.get("overall_feedback", {})
+        if overall_feedback:
+            summary_text = overall_feedback.get("summary")
+            if summary_text:
+                summary_parts.append(f"\n{summary_text}")
+            
+            areas = overall_feedback.get("areas_for_improvement", [])
+            if areas:
+                summary_parts.append("\nAreas for Improvement:")
+                for area in areas:
+                    summary_parts.append(f"  • {area}")
+        
+        # Add per-question breakdown
+        summary_parts.append("\n" + "=" * 60)
+        summary_parts.append("QUESTION-BY-QUESTION BREAKDOWN")
+        summary_parts.append("=" * 60)
+        
+        for result in evaluation_result.get("results", []):
+            if result.get("skipped"):
+                summary_parts.append(f"\nQ{result['id']}: {result['question'][:80]}...")
+                summary_parts.append(f"  [Icebreaker - Not Scored]")
+            else:
+                summary_parts.append(f"\nQ{result['id']}: {result['question'][:80]}...")
+                summary_parts.append(f"  Score: {result['final_score']}/5.0 ({result['rating']})")
+                summary_parts.append(f"  Feedback: {result.get('technical_feedback', 'N/A')}")
+        
+        return "\n".join(summary_parts)

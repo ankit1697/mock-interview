@@ -61,6 +61,7 @@ class CompletedInterview(models.Model):
 	user = models.ForeignKey(User, on_delete=models.CASCADE)
 	transcript = models.TextField()
 	summary = models.TextField(null=True, blank=True)
+	evaluation_results = models.JSONField(null=True, blank=True)  # New field for detailed evaluation
 	completed_at = models.DateTimeField(auto_now_add=True)
 
 	def __str__(self):
