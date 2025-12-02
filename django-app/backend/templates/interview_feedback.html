@@ -107,9 +107,44 @@
 
     <!-- Visual Feedback Tab -->
     <div id="visualContent" class="tab-content hidden">
-      <div class="text-center py-12">
-        <p class="text-gray-500 text-lg">Visual feedback content will be displayed here.</p>
-      </div>
+      {% if completed.video_file %}
+        <div class="mb-6">
+          <h3 class="text-lg font-semibold mb-3">Video Recording</h3>
+          <video controls class="w-full max-w-4xl rounded-lg shadow-lg" style="max-height: 600px;">
+            <source src="{{ completed.video_file.url }}" type="video/webm">
+            Your browser does not support the video tag.
+          </video>
+        </div>
+        
+        {% if completed.visual_feedback %}
+          <div class="mt-8 p-6 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg border border-blue-200 shadow-sm">
+            <h3 class="text-xl font-semibold mb-4 text-blue-900 flex items-center gap-2">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+              </svg>
+              Visual Behavior Analysis
+            </h3>
+            <div class="text-gray-700 whitespace-pre-line bg-white p-4 rounded border border-blue-100 leading-relaxed">{{ completed.visual_feedback }}</div>
+          </div>
+        {% else %}
+          <div class="mt-8 p-6 bg-yellow-50 rounded-lg border border-yellow-200">
+            <div class="flex items-center gap-3 mb-2">
+              <svg class="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+              </svg>
+              <p class="text-yellow-800 font-medium">Analysis in Progress</p>
+            </div>
+            <p class="text-sm text-yellow-700">Video analysis is currently being processed. Please refresh this page in a few moments to see the visual feedback.</p>
+          </div>
+        {% endif %}
+      {% else %}
+        <div class="text-center py-12">
+          <svg class="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+          </svg>
+          <p class="text-gray-500 text-lg">No video recording available for this interview.</p>
+        </div>
+      {% endif %}
     </div>
 
   </div>

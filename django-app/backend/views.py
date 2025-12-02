@@ -9,8 +9,9 @@ from django.views.decorators.csrf import csrf_exempt
 import openai
 import os
 import json
+import threading
 from difflib import SequenceMatcher
-from .utils import read_file, transcribe_audio, text_to_speech
+from .utils import read_file, transcribe_audio, text_to_speech, analyze_video_behavior
 from PyPDF2 import PdfReader
 from .script import InterviewSession
 import requests
@@ -389,6 +390,82 @@ def interview_feedback(request, completed_id):
         "completed": completed,
         "transcript": transcript
     })
+
+
+@login_required
+@csrf_exempt
+@require_POST
+def upload_interview_video(request, completed_id):
+    """Upload video file for a completed interview"""
+    completed = get_object_or_404(CompletedInterview, id=completed_id, user=request.user)
+    
+    if 'video' not in request.FILES:
+        return JsonResponse({"error": "No video file provided"}, status=400)
+    
+    video_file = request.FILES['video']
+    
+    # Validate file size (max 1GB as safety limit)
+    max_size = 1024 * 1024 * 1024  # 1GB
+    if video_file.size > max_size:
+        return JsonResponse({"error": f"Video file too large. Maximum size is {max_size / 1024 / 1024}MB"}, status=400)
+    
+    # Validate file type
+    if not video_file.name.lower().endswith(('.webm', '.mp4', '.mov', '.avi')):
+        return JsonResponse({"error": "Invalid video format. Supported: webm, mp4, mov, avi"}, status=400)
+    
+    try:
+        # Extract duration if provided
+        duration_seconds = None
+        if 'duration_seconds' in request.POST:
+            try:
+                duration_seconds = int(request.POST['duration_seconds'])
+                print(f"Received video duration: {duration_seconds} seconds")
+            except (ValueError, TypeError):
+                print(f"Warning: Invalid duration_seconds value: {request.POST.get('duration_seconds')}")
+        
+        # Save video file and duration to the CompletedInterview
+        completed.video_file = video_file
+        if duration_seconds is not None:
+            completed.video_duration_seconds = duration_seconds
+        completed.save()
+        
+        file_size_mb = video_file.size / 1024 / 1024
+        duration_info = f", Duration: {duration_seconds}s" if duration_seconds else ""
+        print(f"Video uploaded successfully for interview {completed_id}. Size: {file_size_mb:.2f} MB{duration_info}")
+        
+        # Analyze video behavior in background thread (don't block response)
+        def analyze_in_background():
+            try:
+                completed.refresh_from_db()  # Refresh to get the saved file path and duration
+                video_path = completed.video_file.path
+                stored_duration = completed.video_duration_seconds
+                print(f"Starting video behavior analysis for {video_path}, stored duration: {stored_duration}s")
+                visual_feedback = analyze_video_behavior(video_path, duration_seconds=stored_duration)
+                
+                if visual_feedback:
+                    completed.visual_feedback = visual_feedback
+                    completed.save()
+                    print(f"Visual feedback analysis completed for interview {completed_id}")
+                else:
+                    print(f"Visual feedback analysis returned empty for interview {completed_id}")
+            except Exception as analysis_error:
+                print(f"Error during video analysis (non-fatal): {str(analysis_error)}")
+                import traceback
+                traceback.print_exc()
+                # Continue even if analysis fails - video is still saved
+        
+        # Start analysis in background thread
+        analysis_thread = threading.Thread(target=analyze_in_background)
+        analysis_thread.daemon = True
+        analysis_thread.start()
+        
+        return JsonResponse({
+            "success": True,
+            "message": f"Video uploaded successfully ({file_size_mb:.2f} MB). Analysis in progress..."
+        })
+    except Exception as e:
+        print(f"Error uploading video: {str(e)}")
+        return JsonResponse({"error": f"Error saving video: {str(e)}"}, status=500)
 
 
 ##################### OLD WORKING LOGIC #######################

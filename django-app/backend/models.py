@@ -53,6 +53,9 @@ class CompletedInterview(models.Model):
 	confidence_avg = models.FloatField(null=True, blank=True)
 	problem_solving_avg = models.FloatField(null=True, blank=True)
 	flow_avg = models.FloatField(null=True, blank=True)
+	video_file = models.FileField(upload_to='interview_videos/', null=True, blank=True, help_text='Compressed video recording of the interview')
+	video_duration_seconds = models.PositiveIntegerField(null=True, blank=True, help_text='Duration of the video recording in seconds')
+	visual_feedback = models.TextField(null=True, blank=True, help_text='Visual behavior analysis feedback from video')
 	completed_at = models.DateTimeField(auto_now_add=True)
 
 	def __str__(self):
