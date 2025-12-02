@@ -52,7 +52,7 @@
       <div>
         <h2 class="text-2xl font-bold">Interview at {{ completed.interview.company }}</h2>
         <p class="text-gray-600 mt-1">
-          {{ completed.completed_at|date:"F d, Y" }} • {{ completed.interview.get_interview_type_display }}
+          {{ completed.completed_at|date:"F d, Y" }}
         </p>
       </div>
       <a href="{% url 'past_interviews' %}" class="bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 transition-colors">
@@ -60,32 +60,100 @@
       </a>
     </div>
 
-    <!-- Summary Section -->
-    <div class="mb-8 p-4 bg-gray-100 rounded-lg">
-      <h3 class="text-xl font-semibold mb-2">Overall Summary</h3>
-      <p class="text-gray-700 whitespace-pre-line">{{ completed.summary }}</p>
+    <!-- Tabs Navigation -->
+    <div class="border-b border-gray-200 mb-6">
+      <nav class="flex space-x-8" aria-label="Tabs">
+        <button id="technicalTab" 
+                class="tab-button active border-b-2 border-orange-500 py-4 px-1 text-sm font-medium text-orange-600"
+                onclick="switchTab('technical')">
+          Technical Feedback
+        </button>
+        <button id="visualTab" 
+                class="tab-button border-b-2 border-transparent py-4 px-1 text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                onclick="switchTab('visual')">
+          Visual Feedback
+        </button>
+      </nav>
     </div>
 
-    <!-- Transcript Section -->
-    <div>
-      <h3 class="text-xl font-semibold mb-4">Detailed Q&A</h3>
+    <!-- Tab Content -->
+    <!-- Technical Feedback Tab -->
+    <div id="technicalContent" class="tab-content">
+      <!-- Summary Section -->
+      <div class="mb-8 p-4 bg-gray-100 rounded-lg">
+        <h3 class="text-xl font-semibold mb-2">Overall Summary</h3>
+        <p class="text-gray-700 whitespace-pre-line">{{ completed.summary }}</p>
+      </div>
 
-      {% if transcript %}
-        <div class="space-y-6">
-          {% for qa in transcript %}
-            <div class="border p-4 rounded-lg bg-white shadow-sm">
-              <p><strong>Question {{ forloop.counter }}:</strong> {{ qa.question }}</p>
-              <p class="mt-2"><strong>Answer:</strong> {{ qa.answer }}</p>
-              <p class="mt-2"><strong>Evaluation:</strong> {{ qa.evaluation }}</p>
-            </div>
-          {% endfor %}
-        </div>
-      {% else %}
-        <p>No transcript data available.</p>
-      {% endif %}
+      <!-- Transcript Section -->
+      <div>
+        <h3 class="text-xl font-semibold mb-4">Detailed Q&A</h3>
+
+        {% if transcript %}
+          <div class="space-y-6">
+            {% for qa in transcript %}
+              <div class="border p-4 rounded-lg bg-white shadow-sm">
+                <p><strong>Question {{ forloop.counter }}:</strong> {{ qa.question }}</p>
+                <p class="mt-2"><strong>Answer:</strong> {{ qa.answer }}</p>
+                <p class="mt-2"><strong>Evaluation:</strong> {{ qa.evaluation }}</p>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p>No transcript data available.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Visual Feedback Tab -->
+    <div id="visualContent" class="tab-content hidden">
+      <div class="text-center py-12">
+        <p class="text-gray-500 text-lg">Visual feedback content will be displayed here.</p>
+      </div>
     </div>
 
   </div>
 </div>
+
+<script>
+function switchTab(tabName) {
+  // Hide all tab contents
+  document.getElementById('technicalContent').classList.add('hidden');
+  document.getElementById('visualContent').classList.add('hidden');
+  
+  // Remove active styles from all tabs
+  document.getElementById('technicalTab').classList.remove('active', 'border-orange-500', 'text-orange-600');
+  document.getElementById('technicalTab').classList.add('border-transparent', 'text-gray-500');
+  document.getElementById('visualTab').classList.remove('active', 'border-orange-500', 'text-orange-600');
+  document.getElementById('visualTab').classList.add('border-transparent', 'text-gray-500');
+  
+  // Show selected tab content and update tab button styles
+  if (tabName === 'technical') {
+    document.getElementById('technicalContent').classList.remove('hidden');
+    document.getElementById('technicalTab').classList.add('active', 'border-orange-500', 'text-orange-600');
+    document.getElementById('technicalTab').classList.remove('border-transparent', 'text-gray-500');
+  } else if (tabName === 'visual') {
+    document.getElementById('visualContent').classList.remove('hidden');
+    document.getElementById('visualTab').classList.add('active', 'border-orange-500', 'text-orange-600');
+    document.getElementById('visualTab').classList.remove('border-transparent', 'text-gray-500');
+  }
+}
+</script>
+
+<style>
+.tab-button {
+  transition: all 0.2s ease-in-out;
+  cursor: pointer;
+}
+
+.tab-button:hover {
+  color: #374151;
+}
+
+.tab-button.active {
+  color: #ea580c;
+  border-color: #ea580c;
+}
+</style>
 
 {% endblock %}

@@ -127,3 +127,43 @@
 .animate-rotate-paper {
   animation: rotate-paper 2s ease-in-out infinite;
 }
+
+/* Clamp the whole interview content to viewport height (minus nav if 4rem) */
+.interview-page {
+	height: calc(100vh - 4rem); /* adjust 4rem if your navbar height is different */
+	display: flex;
+	flex-direction: column;
+}
+
+/* Two-column area: takes remaining height and prevents page scrolling */
+.interview-main-row {
+	flex: 1 1 auto;
+	display: flex;
+	gap: 1rem;          /* matches your Tailwind gap-4 */
+	min-height: 0;
+	overflow: hidden;  /* important: children can't grow the page, only internal scrolls */
+}
+
+/* Transcript container must be a flex column with min-height: 0 */
+#transcriptContainer {
+	min-height: 0 !important;
+	display: flex !important;
+	flex-direction: column !important;
+}
+
+/* Only the transcript pane scrolls */
+#transcriptPane {
+	flex: 1 1 0% !important;
+	min-height: 0 !important;
+	overflow-y: auto !important;
+	overflow-x: hidden !important;
+	box-sizing: border-box;
+	-webkit-overflow-scrolling: touch;
+}
+
+/* Video panel should NOT scroll */
+#videoPanel {
+	min-height: 0 !important;
+	display: flex !important;
+	flex-direction: column !important;
+}

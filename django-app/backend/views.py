@@ -164,11 +164,73 @@ def extract_text_from_pdf(path):
 	reader = PdfReader(path)
 	return "\n".join([page.extract_text() or "" for page in reader.pages])
 
+
+def _compute_dimension_averages(evaluation_result):
+    """
+    Compute overall and per-dimension average scores from the structured
+    evaluation JSON produced by evaluation_engine.evaluate_interview_json.
+    """
+    if not evaluation_result:
+        return {
+            "overall_score": None,
+            "technical_reasoning_avg": None,
+            "accuracy_avg": None,
+            "confidence_avg": None,
+            "problem_solving_avg": None,
+            "flow_avg": None,
+        }
+
+    results = [
+        r for r in (evaluation_result.get("results") or [])
+        if not r.get("skipped")
+    ]
+    if not results:
+        return {
+            "overall_score": evaluation_result.get("overall_score"),
+            "technical_reasoning_avg": None,
+            "accuracy_avg": None,
+            "confidence_avg": None,
+            "problem_solving_avg": None,
+            "flow_avg": None,
+        }
+
+    dims = ["technical_reasoning", "accuracy", "confidence", "problem_solving", "flow"]
+    sums = {d: 0.0 for d in dims}
+    count = 0
+
+    for r in results:
+        subs = r.get("subscores") or {}
+        for d in dims:
+            val = subs.get(d)
+            if val is not None:
+                sums[d] += float(val)
+        count += 1
+
+    if count == 0:
+        return {
+            "overall_score": evaluation_result.get("overall_score"),
+            "technical_reasoning_avg": None,
+            "accuracy_avg": None,
+            "confidence_avg": None,
+            "problem_solving_avg": None,
+            "flow_avg": None,
+        }
+
+    avgs = {d: round(sums[d] / count, 3) for d in dims}
+
+    return {
+        "overall_score": evaluation_result.get("overall_score"),
+        "technical_reasoning_avg": avgs["technical_reasoning"],
+        "accuracy_avg": avgs["accuracy"],
+        "confidence_avg": avgs["confidence"],
+        "problem_solving_avg": avgs["problem_solving"],
+        "flow_avg": avgs["flow"],
+    }
+
 @login_required
 @csrf_exempt
 def interview_chat(request, interview_id):
     interview = get_object_or_404(Interview, id=interview_id, user=request.user)
-    interview_type = interview.interview_type
 
     session_key = f"session_{request.user.id}_{interview_id}"
     session = active_sessions.get(session_key)
@@ -213,12 +275,20 @@ def interview_chat(request, interview_id):
             overall_summary = session.get_interview_summary()
             print(f"[interview_chat] Generated interview summary for interview_id={interview_id}; creating CompletedInterview...")
 
+            score_data = _compute_dimension_averages(session.full_evaluation)
+
             completed_interview = CompletedInterview.objects.create(
                 interview=interview,
                 user=request.user,
                 transcript=json.dumps(session.interview_data, indent=2),
                 summary=overall_summary,
-                evaluation_results=session.full_evaluation  # Save the full evaluation JSON
+                evaluation_results=session.full_evaluation,  # Save the full evaluation JSON
+                overall_score=score_data["overall_score"],
+                technical_reasoning_avg=score_data["technical_reasoning_avg"],
+                accuracy_avg=score_data["accuracy_avg"],
+                confidence_avg=score_data["confidence_avg"],
+                problem_solving_avg=score_data["problem_solving_avg"],
+                flow_avg=score_data["flow_avg"],
             )
             active_sessions.pop(session_key, None)
 
@@ -255,7 +325,7 @@ def interview_chat(request, interview_id):
             })
 
         # Handle moving to next step
-        next_question = session.next_question(interview_type)
+        next_question = session.next_question()
         audio_response = text_to_speech(next_question)
 
         # Handle interview end
@@ -265,13 +335,20 @@ def interview_chat(request, interview_id):
                 session.interview_data[-1]["evaluation"] = feedback_or_next_question
 
             overall_summary = session.get_interview_summary()
+            score_data = _compute_dimension_averages(session.full_evaluation)
 
             completed_interview = CompletedInterview.objects.create(
                 interview=interview,
                 user=request.user,
                 transcript=json.dumps(session.interview_data, indent=2),
                 summary=overall_summary,
-                evaluation_results=session.full_evaluation  # Save the full evaluation JSON
+                evaluation_results=session.full_evaluation,  # Save the full evaluation JSON
+                overall_score=score_data["overall_score"],
+                technical_reasoning_avg=score_data["technical_reasoning_avg"],
+                accuracy_avg=score_data["accuracy_avg"],
+                confidence_avg=score_data["confidence_avg"],
+                problem_solving_avg=score_data["problem_solving_avg"],
+                flow_avg=score_data["flow_avg"],
             )
             active_sessions.pop(session_key, None)
 
