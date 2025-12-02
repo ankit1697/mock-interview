@@ -6,7 +6,7 @@
   <img src="assets/2.png" width="400" alt="Logo">
 </p>
 
-## 📑 Table of Contents
+## Table of Contents
 
 - [Project Motivation](#project-motivation)
 - [The Problem](#the-problem)

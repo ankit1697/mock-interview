@@ -662,7 +662,7 @@ Candidate's raw reply: {answer}
         )
         return 'no' in check_response.choices[0].message.content.lower()
 
-    def next_question(self, interview_type):
+    def next_question(self, interview_type="general"):
         if self.total_questions_asked >= 5:
             return "We've reached the end of your interview. Thank you for your time!"
 

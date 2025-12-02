@@ -1,49 +1,75 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="w-full mx-auto px-4 h-screen">
-    <div class="h-full flex flex-col">
-    <div class="py-3 text-center text-sm text-gray-500 flex items-center justify-center gap-3">
-        <!-- Interviewer avatar (visible filled badge) -->
-        <div id="interviewerIcon" class="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-xs font-semibold text-gray-700">AI</div>
-        <span id="interviewTitle">{{ interview.company|default:"Company" }} Interviewer</span>
-    </div>
+<div class="w-full mx-auto px-4 h-[calc(100vh-4rem)] overflow-hidden">
+    <div class="h-full flex flex-col gap-3 min-h-0">
+        <div class="py-3 text-center text-sm text-gray-500 flex items-center justify-center gap-3 flex-shrink-0">
+            <!-- Interviewer avatar (visible filled badge) -->
+            <div id="interviewerIcon" class="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-xs font-semibold text-gray-700">AI</div>
+            <span id="interviewTitle">{{ interview.company|default:"Company" }} Interviewer</span>
+        </div>
 
-        <!-- Two-column layout: left = transcript (AI questions + user answers), right = live self-video + status -->
-        <div class="mt-3 flex items-stretch gap-4" style="height: calc(100vh - 120px);">
-            <!-- Narrow left transcript pane (fixed to left edge) -->
-            <div id="transcriptPane" class="overflow-y-auto p-3 bg-white border rounded-lg" style="position:fixed; left:12px; top:84px; width: 220px; height: calc(100vh - 160px); z-index:40;">
-                <div class="text-sm text-gray-500 mb-3">Transcript (AI questions on the left, your answers on the right)</div>
-                <!-- messages will be appended here -->
+        <!-- Two-column layout -->
+        <!-- IMPORTANT: this must be flex and not lose these classes -->
+        <div class="flex-1 flex gap-4 overflow-hidden min-h-0">
+            <!-- Transcript / chat panel -->
+            <div id="transcriptContainer"
+                 class="w-2/5 flex flex-col bg-white border rounded-lg min-h-0">
+                <div class="text-sm text-gray-500 mb-2 p-3 border-b flex-shrink-0">
+                    Interview Transcript
+                </div>
+                <!-- THIS is the scrollable area -->
+                <div id="transcriptPane"
+                     class="flex-1 overflow-y-auto overflow-x-hidden p-3 space-y-2 min-h-0">
+                    <!-- messages appended here -->
+                </div>
             </div>
 
-            <!-- Video / controls pane -->
-            <div id="videoPanel" class="flex-1 flex flex-col items-center justify-start gap-4 p-4 bg-gray-50 border rounded-lg" style="position:relative; margin-left:244px;">
-                <div class="w-full flex justify-between items-center">
-                    <div id="companyLabel" class="text-lg font-semibold">{{ interview.company|default:"Company" }} Interviewer</div>
+            <!-- Video panel -->
+            <div id="videoPanel"
+                 class="flex-1 flex flex-col bg-gray-50 border rounded-lg min-h-0">
+                <div class="w-full flex justify-between items-center flex-shrink-0 px-4 pt-4">
+                    <div id="companyLabel" class="text-lg font-semibold">
+                        {{ interview.company|default:"Company" }} Interviewer
+                    </div>
                     <div id="statusArea" class="text-sm text-gray-500">Ready</div>
                 </div>
 
-                <div style="width:100%; display:flex; align-items:center; justify-content:center;">
-                    <video id="selfVideo" autoplay muted playsinline style="width:100%; height: calc(100vh - 120px); background:#000; border-radius:6px; object-fit:cover;" poster="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1280' height='720'><rect width='100%' height='100%' fill='%23000' /><text x='50%' y='50%' fill='%23fff' font-size='20' font-family='Arial' text-anchor='middle' dominant-baseline='middle'>No camera</text></svg>"></video>
-                </div>
-
-                <div class="w-full flex items-center justify-center gap-3 mt-2">
-                    <button id="stopInterviewButton" class="hidden bg-red-600 text-white px-5 py-2 rounded-full shadow-lg" style="pointer-events:auto;">Stop Interview</button>
+                <!-- Fill remaining height with video, but no scrolling -->
+                <div class="flex-1 w-full min-h-0 px-4 pb-4 flex items-center justify-center">
+                    <div class="w-full h-full rounded-lg overflow-hidden relative">
+                        <video id="selfVideo"
+                               autoplay
+                               muted
+                               playsinline
+                               class="w-full h-full object-cover bg-black rounded-lg"
+                               poster="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1280' height='720'><rect width='100%' height='100%' fill='%23000' /><text x='50%' y='50%' fill='%23fff' font-size='20' font-family='Arial' text-anchor='middle' dominant-baseline='middle'>No camera</text></svg>">
+                        </video>
+                        <!-- Floating stop button like video call UIs -->
+                        <button id="stopInterviewButton"
+                                class="hidden absolute top-3 right-3 bg-red-600 text-white px-4 py-2 rounded-full shadow-lg z-10"
+                                style="pointer-events:auto;">
+                            Stop Interview
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
+    </div>
 
-        <!-- Full-screen one-tap overlay to grant autoplay/mic permission (removed after first tap) -->
-        <div id="gestureOverlay" class="fixed inset-0 bg-black bg-opacity-40 z-50 flex items-center justify-center" style="backdrop-filter: blur(2px);">
-            <button id="startButton" class="bg-white text-gray-800 px-6 py-4 rounded-full text-xl shadow-lg">Start interview</button>
-        </div>
-  </div>
+    <!-- Full-screen one-tap overlay to grant autoplay/mic permission (removed after first tap) -->
+    <div id="gestureOverlay" class="fixed inset-0 bg-black bg-opacity-40 z-50 flex items-center justify-center" style="backdrop-filter: blur(2px);">
+        <button id="startButton" class="bg-white text-gray-800 px-6 py-4 rounded-full text-xl shadow-lg">Start interview</button>
+    </div>
 </div>
 
 <script>
 // Auto play-record loop: play AI audio, then record user automatically, submit, repeat
 let mediaRecorder = null;
 let audioChunks = [];
+let videoRecorder = null;  // For recording video
+let videoChunks = [];  // For storing video chunks
+let recordingStartTime = null;  // Track when recording started
+let recordingDuration = 0;  // Track duration in seconds
 const transcriptPane = document.getElementById('transcriptPane');
 const selfVideo = document.getElementById('selfVideo');
 const videoPanel = document.getElementById('videoPanel');
@@ -51,6 +77,7 @@ const stopInterviewButton = document.getElementById('stopInterviewButton');
 const statusArea = document.getElementById('statusArea');
 let stopRequested = false;
 let localStreamForVideo = null;
+let interviewId = {{ interview.id }};
 
 async function sendAudioToServer(audioBlob) {
     const formData = new FormData();
@@ -101,12 +128,24 @@ async function sendAudioToServer(audioBlob) {
         if (data.completed_id) {
             const doneHtml = document.createElement('div');
             doneHtml.className = 'text-green-600 mt-4';
-            doneHtml.textContent = 'Redirecting you to detailed feedback...';
+            doneHtml.textContent = 'Uploading video...';
             transcriptPane.appendChild(doneHtml);
             transcriptPane.scrollTop = transcriptPane.scrollHeight;
-            setTimeout(() => {
-                window.location.href = `/interview/feedback/${data.completed_id}/`;
-            }, 1200);
+            
+            // Stop video recording and upload
+            try {
+                await stopVideoRecordingAndUpload(data.completed_id);
+                doneHtml.textContent = 'Redirecting you to detailed feedback...';
+                setTimeout(() => {
+                    window.location.href = `/interview/feedback/${data.completed_id}/`;
+                }, 1000);
+            } catch (err) {
+                console.error('Video upload error:', err);
+                doneHtml.textContent = 'Redirecting to feedback (video upload failed)...';
+                setTimeout(() => {
+                    window.location.href = `/interview/feedback/${data.completed_id}/`;
+                }, 1000);
+            }
         }
 
     } catch (error) {
@@ -244,6 +283,233 @@ function startAutoRecording() {
 }
 
 
+// Video recording functions with compression
+async function startVideoRecording(stream) {
+    try {
+        // Optimized settings for compression: 720p, H.264, ~1 Mbps bitrate
+        const options = {
+            mimeType: 'video/webm;codecs=vp9,opus',  // VP9 for better compression than VP8
+            videoBitsPerSecond: 1000000,  // 1 Mbps bitrate (good quality/size balance)
+        };
+        
+        // Fallback options if VP9 not supported
+        const fallbackOptions = [
+            { mimeType: 'video/webm;codecs=vp8,opus', videoBitsPerSecond: 1000000 },
+            { mimeType: 'video/webm;codecs=h264,opus', videoBitsPerSecond: 1000000 },
+            { mimeType: 'video/webm', videoBitsPerSecond: 1000000 },
+        ];
+        
+        let selectedOptions = options;
+        if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+            for (const opt of fallbackOptions) {
+                if (MediaRecorder.isTypeSupported(opt.mimeType)) {
+                    selectedOptions = opt;
+                    break;
+                }
+            }
+        }
+        
+        videoRecorder = new MediaRecorder(stream, selectedOptions);
+        videoChunks = [];
+        
+        videoRecorder.ondataavailable = (event) => {
+            if (event.data && event.data.size > 0) {
+                videoChunks.push(event.data);
+                console.log('Video chunk received. Size:', event.data.size, 'bytes. Total chunks:', videoChunks.length);
+            } else {
+                console.warn('Received empty video chunk or no data in event');
+            }
+        };
+        
+        videoRecorder.onstop = () => {
+            console.log('Video recording stopped. Total chunks:', videoChunks.length, 'Total size:', videoChunks.reduce((sum, chunk) => sum + chunk.size, 0), 'bytes');
+        };
+        
+        // Start recording, capturing data every 1 second (for frequent saves, especially for short interviews)
+        recordingStartTime = Date.now();  // Track recording start time
+        videoRecorder.start(1000);
+        console.log('Video recording started with settings:', selectedOptions, 'Timeslice: 1000ms (1 second)');
+        
+        // Verify recording actually started
+        setTimeout(() => {
+            console.log('Video recorder state check after 500ms:', videoRecorder.state, 'Chunks so far:', videoChunks.length);
+        }, 500);
+    } catch (err) {
+        console.error('Error starting video recording:', err);
+    }
+}
+
+async function stopVideoRecordingAndUpload(completedId) {
+    return new Promise((resolve, reject) => {
+        console.log('stopVideoRecordingAndUpload called. videoRecorder state:', videoRecorder ? videoRecorder.state : 'null', 'chunks:', videoChunks.length);
+        
+        if (!videoRecorder) {
+            console.warn('No video recorder exists. Video recording may not have started.');
+            resolve(false);
+            return;
+        }
+        
+        if (videoRecorder.state === 'inactive') {
+            console.warn('Video recorder is already inactive. Chunks available:', videoChunks.length);
+            // Try to upload existing chunks even if recorder is inactive
+            if (videoChunks.length === 0) {
+                console.warn('No video chunks available to upload');
+                resolve(false);
+                return;
+            }
+        }
+        
+        // If recorder is already stopped but we have chunks, try to upload them
+        if (videoRecorder.state === 'inactive' && videoChunks.length > 0) {
+            console.log('Recorder already stopped, but we have chunks. Creating blob from existing chunks...');
+            // Calculate duration if we have start time
+            if (recordingStartTime && !recordingDuration) {
+                recordingDuration = Math.round((Date.now() - recordingStartTime) / 1000);
+                console.log('Duration calculated for already-stopped recorder:', recordingDuration, 'seconds');
+            }
+            // Create blob from existing chunks and upload
+            const videoBlob = new Blob(videoChunks, { type: 'video/webm' });
+            if (videoBlob.size > 0) {
+                uploadVideoBlob(videoBlob, completedId, recordingDuration || null).then(resolve).catch(reject);
+            } else {
+                console.warn('Video blob is empty (0 bytes)');
+                resolve(false);
+            }
+            return;
+        }
+        
+        // Calculate recording duration
+        if (recordingStartTime) {
+            recordingDuration = Math.round((Date.now() - recordingStartTime) / 1000);  // Duration in seconds
+            console.log('Recording duration calculated:', recordingDuration, 'seconds');
+        }
+        
+        // Set up stop handler (don't overwrite existing one)
+        const originalOnstop = videoRecorder.onstop;
+        videoRecorder.onstop = async () => {
+            // Call original handler if it exists
+            if (originalOnstop) {
+                originalOnstop();
+            }
+            
+            try {
+                console.log('Video recorder stopped. Creating blob from', videoChunks.length, 'chunks');
+                
+                if (videoChunks.length === 0) {
+                    console.warn('No video chunks collected. Video recording may not have captured any data.');
+                    resolve(false);
+                    return;
+                }
+                
+                // Finalize duration calculation if not already done
+                if (!recordingDuration && recordingStartTime) {
+                    recordingDuration = Math.round((Date.now() - recordingStartTime) / 1000);
+                    console.log('Recording duration finalized:', recordingDuration, 'seconds');
+                }
+                
+                const videoBlob = new Blob(videoChunks, { type: 'video/webm' });
+                console.log('Video blob created. Size:', (videoBlob.size / 1024 / 1024).toFixed(2), 'MB', 'Duration:', recordingDuration, 'seconds');
+                
+                if (videoBlob.size === 0) {
+                    console.warn('Video blob is empty (0 bytes). Cannot upload.');
+                    resolve(false);
+                    return;
+                }
+                
+                await uploadVideoBlob(videoBlob, completedId, recordingDuration);
+                resolve(true);
+            } catch (err) {
+                console.error('Error in onstop handler:', err);
+                reject(err);
+            }
+        };
+        
+        // Stop the recorder
+        try {
+            if (videoRecorder.state === 'recording' || videoRecorder.state === 'paused') {
+                // Request final data chunk to ensure we get all recorded data
+                try {
+                    videoRecorder.requestData();
+                    console.log('Requested final video data chunk before stopping');
+                } catch (e) {
+                    console.warn('Could not request final data (may not be supported):', e);
+                }
+                
+                // Give a brief moment for the data chunk to be processed, then stop
+                setTimeout(() => {
+                    try {
+                        videoRecorder.stop();
+                        console.log('Video recorder stop() called');
+                    } catch (stopErr) {
+                        console.error('Error calling stop():', stopErr);
+                        reject(stopErr);
+                    }
+                }, 300); // Small delay to allow final chunk to be collected
+            } else {
+                console.warn('Video recorder state is', videoRecorder.state, '- cannot stop');
+                // Try to upload existing chunks anyway
+                if (videoChunks.length > 0) {
+                    // Calculate duration if we have start time
+                    if (recordingStartTime && !recordingDuration) {
+                        recordingDuration = Math.round((Date.now() - recordingStartTime) / 1000);
+                        console.log('Duration calculated for unusual state:', recordingDuration, 'seconds');
+                    }
+                    const videoBlob = new Blob(videoChunks, { type: 'video/webm' });
+                    if (videoBlob.size > 0) {
+                        uploadVideoBlob(videoBlob, completedId, recordingDuration || null).then(resolve).catch(reject);
+                    } else {
+                        resolve(false);
+                    }
+                } else {
+                    resolve(false);
+                }
+            }
+        } catch (err) {
+            console.error('Error stopping video recorder:', err);
+            reject(err);
+        }
+    });
+}
+
+async function uploadVideoBlob(videoBlob, completedId, durationSeconds = null) {
+    try {
+        const formData = new FormData();
+        formData.append('video', videoBlob, `interview_${interviewId}_${completedId}.webm`);
+        formData.append('completed_id', completedId);
+        if (durationSeconds !== null) {
+            formData.append('duration_seconds', durationSeconds);
+            console.log('Including duration in upload:', durationSeconds, 'seconds');
+        }
+        formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+        
+        statusArea.textContent = 'Uploading video...';
+        
+        console.log('Uploading video blob. Size:', (videoBlob.size / 1024 / 1024).toFixed(2), 'MB', 'Duration:', durationSeconds || 'unknown', 'seconds');
+        
+        const response = await fetch(`/interview/upload-video/${completedId}/`, {
+            method: 'POST',
+            body: formData
+        });
+        
+        const responseData = await response.json();
+        
+        if (response.ok) {
+            console.log('Video uploaded successfully:', responseData);
+            // Stop video stream tracks after successful upload
+            if (localStreamForVideo) {
+                localStreamForVideo.getTracks().forEach(track => track.stop());
+            }
+            return true;
+        } else {
+            console.error('Video upload failed:', responseData);
+            throw new Error(responseData.error || 'Upload failed');
+        }
+    } catch (err) {
+        console.error('Error uploading video blob:', err);
+        throw err;
+    }
+}
+
 // Start only after user gesture (overlay tap) to satisfy autoplay/microphone policies
 window.addEventListener("DOMContentLoaded", () => {
     const startButton = document.getElementById('startButton');
@@ -266,10 +532,20 @@ window.addEventListener("DOMContentLoaded", () => {
 
             try {
                 statusArea.textContent = 'Requesting camera access...';
-                localStreamForVideo = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+                // Request video with audio for recording
+                localStreamForVideo = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: 'user',
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                        frameRate: { ideal: 30 }
+                    }, 
+                    audio: true  // Include audio in video recording
+                });
                 selfVideo.srcObject = localStreamForVideo;
                 try { await selfVideo.play(); } catch(e) { /* ignore autoplay errors */ }
                 statusArea.textContent = 'Camera active';
+                
                 // log small note in transcript pane
                 const note = document.createElement('div');
                 note.className = 'text-xs text-gray-400 mb-2';
@@ -322,6 +598,15 @@ window.addEventListener("DOMContentLoaded", () => {
                 statusArea.textContent = '';
             }
 
+            // Start video recording when the first question is asked (interview has actually started)
+            if (localStreamForVideo && (!videoRecorder || videoRecorder.state === 'inactive')) {
+                await startVideoRecording(localStreamForVideo);
+                const recordingNote = document.createElement('div');
+                recordingNote.className = 'text-xs text-gray-400 mb-2';
+                recordingNote.textContent = 'Recording started.';
+                transcriptPane.appendChild(recordingNote);
+            }
+
             // Show stop button
             stopInterviewButton.classList.remove('hidden');
             statusArea.textContent = 'Interview in progress';
@@ -343,6 +628,13 @@ window.addEventListener("DOMContentLoaded", () => {
                     const resp = await fetch('', { method: 'POST', body: fd });
                     const data = await resp.json();
                     if (data.completed_id) {
+                        statusArea.textContent = 'Uploading video...';
+                        // Stop video recording and upload before redirecting
+                        try {
+                            await stopVideoRecordingAndUpload(data.completed_id);
+                        } catch (err) {
+                            console.error('Video upload error:', err);
+                        }
                         window.location.href = `/interview/feedback/${data.completed_id}/`;
                         return;
                     }
@@ -377,6 +669,41 @@ window.addEventListener("DOMContentLoaded", () => {
     });
 });
 
+// Stop button handler
+stopInterviewButton.addEventListener('click', () => {
+    stopRequested = true;
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+    }
+    if (localStreamForVideo) {
+        localStreamForVideo.getTracks().forEach(track => track.stop());
+    }
+    statusArea.textContent = 'Stopping...';
+    
+    // Optional: send stop signal to server
+    try {
+        fetch('', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}',
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: new URLSearchParams({ action: 'stop' })
+        });
+    } catch (err) {
+        console.error('Error stopping interview on server:', err);
+    }
+});
+
+// Prevent window/page scrolling while on this view
+// document.addEventListener('DOMContentLoaded', () => {
+//     const originalOverflow = document.body.style.overflow;
+//     document.body.style.overflow = 'hidden';
+//     window.addEventListener('beforeunload', () => {
+//         document.body.style.overflow = originalOverflow;
+//     }, { once: true });
+// });
+
 // Text form is disabled in voice-only mode; keep functions for compatibility but don't attach handlers
 
 // Voice-only mode: textarea and keyboard handlers are disabled.
@@ -392,6 +719,40 @@ window.addEventListener("DOMContentLoaded", () => {
 @keyframes pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.5; }
+}
+
+/* Ensure video doesn't expand beyond container */
+#videoPanel {
+    box-sizing: border-box;
+}
+
+#videoPanel > div:last-child {
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+#selfVideo {
+    max-width: 100% !important;
+    max-height: 100% !important;
+    object-fit: cover;
+    box-sizing: border-box;
+}
+
+/* Ensure transcript pane is scrollable - critical for flexbox scrolling */
+/* The transcript container and its parent flex containers need min-height: 0 */
+#transcriptContainer {
+    min-height: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+}
+
+#transcriptPane {
+    flex: 1 1 0% !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    box-sizing: border-box;
+    -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
 }
 </style>
 {% endblock %}

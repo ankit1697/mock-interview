@@ -12,8 +12,6 @@
   <!-- Hidden originals for enhancement (must be inside the form) -->
   <div class="hidden">
     {{ form.resume }}
-    {{ form.interview_type }}
-    {{ form.duration }}
   </div>
 
   <div class="space-y-4">
@@ -38,16 +36,6 @@
       <div class="custom-select" data-select-id="id_resume"></div>
       <div class="mt-2 text-xs text-gray-500">Or upload a new one:</div>
       {{ upload_form.file }}
-    </div>
-
-    <div>
-      <label class="block text-sm font-medium text-gray-700 mb-1">Interview Type</label>
-      <div class="custom-select" data-select-id="id_interview_type"></div>
-    </div>
-
-    <div>
-      <label class="block text-sm font-medium text-gray-700 mb-1">Duration</label>
-      <div class="custom-select" data-select-id="id_duration"></div>
     </div>
   </div>
 
