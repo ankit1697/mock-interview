@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+{% block content %}
+{% load static %}
+
+<div class="flex">
+<aside class="h-screen sticky top-16 border-r shadow-sm hidden md:flex flex-col justify-between bg-white sidenav w-64">
+  
+  <!-- Top Links -->
+  <div>
+    <!-- Profile Tab -->
+    <a href="{% url 'profile' %}"><div class="flex items-center gap-2 px-4 py-4 hover:bg-gray-100 cursor-pointer">
+      <img src="{% static 'backend/images/profile.png' %}" alt="Profile" class="w-5 h-auto" />
+      <span class="text-gray-700">Profile</span>
+    </div></a>
+
+    <!-- Performance Dashboard -->
+    <div class="flex items-center gap-2 px-4 py-4 bg-white border-r-4 sidenav-active-item">
+      <img src="{% static 'backend/images/dashboard.png' %}" alt="Dashboard" class="w-5 h-auto" />
+      <span class="sidenav-active-text font-semibold">Performance Dashboard</span>
+    </div>
+
+    <!-- Past Interviews -->
+    <a href="{% url 'past_interviews' %}"><div class="flex items-center gap-2 px-4 py-4 hover:bg-gray-100 cursor-pointer">
+      <img src="{% static 'backend/images/past.png' %}" alt="Past" class="w-5 h-auto" />
+      <span class="text-gray-700">Past Interviews</span>
+    </div></a>
+  </div>
+
+  <!-- Bottom Logout -->
+  <div class="p-4">
+    <a href="{% url 'account_logout' %}" 
+       onclick="return confirm('Are you sure you want to log out?');"
+       class="flex items-center gap-2 text-red-600 hover:text-red-800 transition">
+      <img src="{% static 'backend/images/logout.png' %}" alt="Logout" class="w-4 h-4" />
+      Logout
+    </a>
+
+  </div>
+
+</aside>
+
+<div class="flex-1 p-6">
+  <h2 class="text-2xl font-bold mb-6">Performance Dashboard</h2>
+
+  {% if total_interviews == 0 %}
+  <div class="bg-blue-50 border border-blue-200 rounded-lg p-6 text-center">
+    <h3 class="text-lg font-semibold text-blue-800 mb-2">No Interview Data Yet</h3>
+    <p class="text-blue-600">Complete your first mock interview to see performance analytics and trends.</p>
+    <a href="{% url 'setup_interview' %}" class="inline-block mt-4 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition">
+      Start Your First Interview
+    </a>
+  </div>
+  {% else %}
+
+  <!-- Overview Stats -->
+  <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+    <div class="bg-white shadow-sm border rounded-lg p-4">
+      <h3 class="text-sm font-medium text-gray-500">Total Interviews</h3>
+      <p class="text-2xl font-bold text-gray-900">{{ total_interviews }}</p>
+    </div>
+    <div class="bg-white shadow-sm border rounded-lg p-4">
+      <h3 class="text-sm font-medium text-gray-500">Average Score</h3>
+      <p class="text-2xl font-bold text-gray-900">
+        {% if performance_data %}
+          {{ overall_average }}/5.0
+        {% else %}
+          N/A
+        {% endif %}
+      </p>
+    </div>
+    <div class="bg-white shadow-sm border rounded-lg p-4">
+      <h3 class="text-sm font-medium text-gray-500">Latest Rating</h3>
+      <p class="text-2xl font-bold text-gray-900">
+        {% if latest_interview %}
+          {{ latest_interview.rating }}
+        {% else %}
+          N/A
+        {% endif %}
+      </p>
+    </div>
+    <div class="bg-white shadow-sm border rounded-lg p-4">
+      <h3 class="text-sm font-medium text-gray-500">Improvement Areas</h3>
+      <p class="text-sm text-gray-600">
+        {% if latest_interview %}
+          {{ latest_interview.areas_for_improvement|length }} focus areas
+        {% else %}
+          N/A
+        {% endif %}
+      </p>
+    </div>
+  </div>
+
+  <!-- Performance Over Time Chart -->
+  <div class="bg-white shadow-sm border rounded-lg p-6 mb-8">
+    <h3 class="text-lg font-semibold mb-4">Performance Trend</h3>
+    <canvas id="performanceChart" width="400" height="200"></canvas>
+  </div>
+
+  <!-- Dimension Averages -->
+  <div class="bg-white shadow-sm border rounded-lg p-6 mb-8">
+    <h3 class="text-lg font-semibold mb-4">Average Scores by Dimension</h3>
+    <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+      {% for dim, data in dimension_averages.items %}
+      <div class="text-center">
+        <div class="text-2xl font-bold text-blue-600">{{ data.score }}/5</div>
+        <div class="text-sm text-gray-500">
+          {% if dim == 'technical_reasoning' %}Technical Reasoning
+          {% elif dim == 'accuracy' %}Accuracy
+          {% elif dim == 'confidence' %}Confidence
+          {% elif dim == 'problem_solving' %}Problem Solving
+          {% elif dim == 'flow' %}Flow
+          {% endif %}
+        </div>
+        <div class="w-full bg-gray-200 rounded-full h-2 mt-2">
+          <div class="bg-blue-600 h-2 rounded-full" style="width: {{ data.percentage }}%"></div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Recent Interviews Table -->
+  <div class="bg-white shadow-sm border rounded-lg p-6">
+    <h3 class="text-lg font-semibold mb-4">Recent Interview Performance</h3>
+    <div class="overflow-x-auto">
+      <table class="min-w-full table-auto">
+        <thead>
+          <tr class="bg-gray-50">
+            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Company</th>
+            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Score</th>
+            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Rating</th>
+            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Key Areas</th>
+          </tr>
+        </thead>
+        <tbody class="bg-white divide-y divide-gray-200">
+          {% for interview in performance_data|slice:":10" %}
+          <tr>
+            <td class="px-4 py-2 text-sm text-gray-900">{{ interview.date|date:"M d, Y" }}</td>
+            <td class="px-4 py-2 text-sm text-gray-900">{{ interview.company }}</td>
+            <td class="px-4 py-2 text-sm text-gray-900">{{ interview.type }}</td>
+            <td class="px-4 py-2 text-sm font-medium">{{ interview.overall_score }}/5.0</td>
+            <td class="px-4 py-2 text-sm">
+              <span class="px-2 py-1 text-xs rounded-full 
+                {% if interview.rating == 'Excellent' %}bg-green-100 text-green-800{% elif interview.rating == 'Very Good' %}bg-blue-100 text-blue-800{% elif interview.rating == 'Good' %}bg-yellow-100 text-yellow-800{% else %}bg-red-100 text-red-800{% endif %}">
+                {{ interview.rating }}
+              </span>
+            </td>
+            <td class="px-4 py-2 text-sm text-gray-500">
+              {% for area in interview.areas_for_improvement|slice:":2" %}
+                {{ area }}{% if not forloop.last %}, {% endif %}
+              {% endfor %}
+              {% if interview.areas_for_improvement|length > 2 %}...{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {% endif %}
+</div>
+</div>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  {% if scores_over_time_json %}
+  const ctx = document.getElementById('performanceChart').getContext('2d');
+  const performanceData = {{ scores_over_time_json|safe }};
+  
+  const labels = performanceData.map(item => item.date);
+  const scores = performanceData.map(item => item.score);
+  
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Interview Score',
+        data: scores,
+        borderColor: 'rgb(59, 130, 246)',
+        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+        tension: 0.4,
+        fill: true
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: {
+          display: false
+        },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              const data = performanceData[context.dataIndex];
+              return `Score: ${context.parsed.y}/5.0 (${data.company} - ${data.type})`;
+            }
+          }
+        }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          max: 5,
+          ticks: {
+            stepSize: 1
+          }
+        }
+      }
+    }
+  });
+  {% endif %}
+});
+</script>
+
+{% endblock %}

@@ -11,6 +11,7 @@ urlpatterns = [
     path("interview/chat/<int:interview_id>/", interview_chat, name="interview_chat"),
     path('profile/past-interviews/', past_interviews, name='past_interviews'),
     path('interview/feedback/<int:completed_id>/', interview_feedback, name='interview_feedback'),
+    path('performance-dashboard/', performance_dashboard, name='performance_dashboard'),
     path('interview/upload-video/<int:completed_id>/', upload_interview_video, name='upload_interview_video'),
     # Ephemeral realtime session (server issues short-lived credentials)
     path('realtime/session/', create_realtime_session, name='create_realtime_session'),

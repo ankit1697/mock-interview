@@ -393,6 +393,112 @@ def interview_feedback(request, completed_id):
 
 
 @login_required
+def performance_dashboard(request):
+    # Get all completed interviews for the user
+    completed_interviews = CompletedInterview.objects.filter(
+        user=request.user
+    ).select_related('interview').order_by('completed_at')
+
+    # Prepare data for charts
+    performance_data = []
+    scores_over_time = []
+    dimensions_data = {
+        'technical_reasoning': [],
+        'accuracy': [],
+        'confidence': [],
+        'problem_solving': [],
+        'flow': []
+    }
+    
+    interview_dates = []
+    
+    for completed in completed_interviews:
+        if completed.evaluation_results:
+            try:
+                eval_data = completed.evaluation_results
+                overall_score = eval_data.get('overall_score')
+                if overall_score is not None:
+                    # Convert completed_at to date string for chart
+                    date_str = completed.completed_at.strftime('%Y-%m-%d')
+                    interview_dates.append(date_str)
+                    scores_over_time.append({
+                        'date': date_str,
+                        'score': float(round(overall_score, 2)),
+                        'company': completed.interview.company,
+                        'type': completed.interview.get_interview_type_display()
+                    })
+                    
+                    # Collect dimension scores from results
+                    results = eval_data.get('results', [])
+                    for result in results:
+                        if not result.get('skipped', False):
+                            subscores = result.get('subscores', {})
+                            for dim in dimensions_data.keys():
+                                score = subscores.get(dim)
+                                if score is not None:
+                                    dimensions_data[dim].append({
+                                        'date': date_str,
+                                        'score': float(score),
+                                        'question_id': result.get('id')
+                                    })
+                    
+                    performance_data.append({
+                        'date': completed.completed_at,
+                        'company': completed.interview.company,
+                        'type': completed.interview.get_interview_type_display(),
+                        'overall_score': float(overall_score),
+                        'rating': eval_data.get('overall_rating'),
+                        'summary': eval_data.get('overall_feedback', {}).get('summary', ''),
+                        'areas_for_improvement': eval_data.get('overall_feedback', {}).get('areas_for_improvement', [])
+                    })
+            except Exception as e:
+                print(f"Error processing evaluation data: {e}")
+                continue
+
+    # Calculate averages for dimensions
+    dimension_averages = {}
+    dimension_names = {
+        'technical_reasoning': 'Technical Reasoning',
+        'accuracy': 'Accuracy',
+        'confidence': 'Confidence',
+        'problem_solving': 'Problem Solving',
+        'flow': 'Flow'
+    }
+    for dim, data in dimensions_data.items():
+        if data:
+            avg_score = sum(item['score'] for item in data) / len(data)
+            dimension_averages[dim] = {
+                'score': float(round(avg_score, 2)),
+                'percentage': int(round(avg_score * 20, 0))  # Convert to percentage for CSS width
+            }
+        else:
+            dimension_averages[dim] = {
+                'score': 0.0,
+                'percentage': 0
+            }
+
+    # Calculate overall average score
+    overall_avg = 0.0
+    if performance_data:
+        overall_avg = sum(item['overall_score'] for item in performance_data) / len(performance_data)
+
+    # Get latest interview data
+    latest_interview = performance_data[-1] if performance_data else None
+
+    import json
+    context = {
+        'performance_data': performance_data,
+        'scores_over_time_json': json.dumps(scores_over_time),
+        'dimensions_data': dimensions_data,
+        'dimension_averages': dimension_averages,
+        'dimension_names': dimension_names,
+        'interview_dates': interview_dates,
+        'total_interviews': len(performance_data),
+        'overall_average': float(round(overall_avg, 1)),
+        'latest_interview': latest_interview
+    }
+    
+    return render(request, "performance_dashboard.html", context)
 @csrf_exempt
 @require_POST
 def upload_interview_video(request, completed_id):
