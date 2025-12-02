@@ -9,8 +9,9 @@ from django.views.decorators.csrf import csrf_exempt
 import openai
 import os
 import json
+import threading
 from difflib import SequenceMatcher
-from .utils import read_file, transcribe_audio, text_to_speech
+from .utils import read_file, transcribe_audio, text_to_speech, analyze_video_behavior
 from PyPDF2 import PdfReader
 from .script import InterviewSession
 import requests
@@ -164,11 +165,73 @@ def extract_text_from_pdf(path):
 	reader = PdfReader(path)
 	return "\n".join([page.extract_text() or "" for page in reader.pages])
 
+
+def _compute_dimension_averages(evaluation_result):
+    """
+    Compute overall and per-dimension average scores from the structured
+    evaluation JSON produced by evaluation_engine.evaluate_interview_json.
+    """
+    if not evaluation_result:
+        return {
+            "overall_score": None,
+            "technical_reasoning_avg": None,
+            "accuracy_avg": None,
+            "confidence_avg": None,
+            "problem_solving_avg": None,
+            "flow_avg": None,
+        }
+
+    results = [
+        r for r in (evaluation_result.get("results") or [])
+        if not r.get("skipped")
+    ]
+    if not results:
+        return {
+            "overall_score": evaluation_result.get("overall_score"),
+            "technical_reasoning_avg": None,
+            "accuracy_avg": None,
+            "confidence_avg": None,
+            "problem_solving_avg": None,
+            "flow_avg": None,
+        }
+
+    dims = ["technical_reasoning", "accuracy", "confidence", "problem_solving", "flow"]
+    sums = {d: 0.0 for d in dims}
+    count = 0
+
+    for r in results:
+        subs = r.get("subscores") or {}
+        for d in dims:
+            val = subs.get(d)
+            if val is not None:
+                sums[d] += float(val)
+        count += 1
+
+    if count == 0:
+        return {
+            "overall_score": evaluation_result.get("overall_score"),
+            "technical_reasoning_avg": None,
+            "accuracy_avg": None,
+            "confidence_avg": None,
+            "problem_solving_avg": None,
+            "flow_avg": None,
+        }
+
+    avgs = {d: round(sums[d] / count, 3) for d in dims}
+
+    return {
+        "overall_score": evaluation_result.get("overall_score"),
+        "technical_reasoning_avg": avgs["technical_reasoning"],
+        "accuracy_avg": avgs["accuracy"],
+        "confidence_avg": avgs["confidence"],
+        "problem_solving_avg": avgs["problem_solving"],
+        "flow_avg": avgs["flow"],
+    }
+
 @login_required
 @csrf_exempt
 def interview_chat(request, interview_id):
     interview = get_object_or_404(Interview, id=interview_id, user=request.user)
-    interview_type = interview.interview_type
 
     session_key = f"session_{request.user.id}_{interview_id}"
     session = active_sessions.get(session_key)
@@ -213,12 +276,20 @@ def interview_chat(request, interview_id):
             overall_summary = session.get_interview_summary()
             print(f"[interview_chat] Generated interview summary for interview_id={interview_id}; creating CompletedInterview...")
 
+            score_data = _compute_dimension_averages(session.full_evaluation)
+
             completed_interview = CompletedInterview.objects.create(
                 interview=interview,
                 user=request.user,
                 transcript=json.dumps(session.interview_data, indent=2),
                 summary=overall_summary,
-                evaluation_results=session.full_evaluation  # Save the full evaluation JSON
+                evaluation_results=session.full_evaluation,  # Save the full evaluation JSON
+                overall_score=score_data["overall_score"],
+                technical_reasoning_avg=score_data["technical_reasoning_avg"],
+                accuracy_avg=score_data["accuracy_avg"],
+                confidence_avg=score_data["confidence_avg"],
+                problem_solving_avg=score_data["problem_solving_avg"],
+                flow_avg=score_data["flow_avg"],
             )
             active_sessions.pop(session_key, None)
 
@@ -255,7 +326,7 @@ def interview_chat(request, interview_id):
             })
 
         # Handle moving to next step
-        next_question = session.next_question(interview_type)
+        next_question = session.next_question()
         audio_response = text_to_speech(next_question)
 
         # Handle interview end
@@ -265,13 +336,20 @@ def interview_chat(request, interview_id):
                 session.interview_data[-1]["evaluation"] = feedback_or_next_question
 
             overall_summary = session.get_interview_summary()
+            score_data = _compute_dimension_averages(session.full_evaluation)
 
             completed_interview = CompletedInterview.objects.create(
                 interview=interview,
                 user=request.user,
                 transcript=json.dumps(session.interview_data, indent=2),
                 summary=overall_summary,
-                evaluation_results=session.full_evaluation  # Save the full evaluation JSON
+                evaluation_results=session.full_evaluation,  # Save the full evaluation JSON
+                overall_score=score_data["overall_score"],
+                technical_reasoning_avg=score_data["technical_reasoning_avg"],
+                accuracy_avg=score_data["accuracy_avg"],
+                confidence_avg=score_data["confidence_avg"],
+                problem_solving_avg=score_data["problem_solving_avg"],
+                flow_avg=score_data["flow_avg"],
             )
             active_sessions.pop(session_key, None)
 
@@ -312,6 +390,82 @@ def interview_feedback(request, completed_id):
         "completed": completed,
         "transcript": transcript
     })
+
+
+@login_required
+@csrf_exempt
+@require_POST
+def upload_interview_video(request, completed_id):
+    """Upload video file for a completed interview"""
+    completed = get_object_or_404(CompletedInterview, id=completed_id, user=request.user)
+    
+    if 'video' not in request.FILES:
+        return JsonResponse({"error": "No video file provided"}, status=400)
+    
+    video_file = request.FILES['video']
+    
+    # Validate file size (max 1GB as safety limit)
+    max_size = 1024 * 1024 * 1024  # 1GB
+    if video_file.size > max_size:
+        return JsonResponse({"error": f"Video file too large. Maximum size is {max_size / 1024 / 1024}MB"}, status=400)
+    
+    # Validate file type
+    if not video_file.name.lower().endswith(('.webm', '.mp4', '.mov', '.avi')):
+        return JsonResponse({"error": "Invalid video format. Supported: webm, mp4, mov, avi"}, status=400)
+    
+    try:
+        # Extract duration if provided
+        duration_seconds = None
+        if 'duration_seconds' in request.POST:
+            try:
+                duration_seconds = int(request.POST['duration_seconds'])
+                print(f"Received video duration: {duration_seconds} seconds")
+            except (ValueError, TypeError):
+                print(f"Warning: Invalid duration_seconds value: {request.POST.get('duration_seconds')}")
+        
+        # Save video file and duration to the CompletedInterview
+        completed.video_file = video_file
+        if duration_seconds is not None:
+            completed.video_duration_seconds = duration_seconds
+        completed.save()
+        
+        file_size_mb = video_file.size / 1024 / 1024
+        duration_info = f", Duration: {duration_seconds}s" if duration_seconds else ""
+        print(f"Video uploaded successfully for interview {completed_id}. Size: {file_size_mb:.2f} MB{duration_info}")
+        
+        # Analyze video behavior in background thread (don't block response)
+        def analyze_in_background():
+            try:
+                completed.refresh_from_db()  # Refresh to get the saved file path and duration
+                video_path = completed.video_file.path
+                stored_duration = completed.video_duration_seconds
+                print(f"Starting video behavior analysis for {video_path}, stored duration: {stored_duration}s")
+                visual_feedback = analyze_video_behavior(video_path, duration_seconds=stored_duration)
+                
+                if visual_feedback:
+                    completed.visual_feedback = visual_feedback
+                    completed.save()
+                    print(f"Visual feedback analysis completed for interview {completed_id}")
+                else:
+                    print(f"Visual feedback analysis returned empty for interview {completed_id}")
+            except Exception as analysis_error:
+                print(f"Error during video analysis (non-fatal): {str(analysis_error)}")
+                import traceback
+                traceback.print_exc()
+                # Continue even if analysis fails - video is still saved
+        
+        # Start analysis in background thread
+        analysis_thread = threading.Thread(target=analyze_in_background)
+        analysis_thread.daemon = True
+        analysis_thread.start()
+        
+        return JsonResponse({
+            "success": True,
+            "message": f"Video uploaded successfully ({file_size_mb:.2f} MB). Analysis in progress..."
+        })
+    except Exception as e:
+        print(f"Error uploading video: {str(e)}")
+        return JsonResponse({"error": f"Error saving video: {str(e)}"}, status=500)
 
 
 ##################### OLD WORKING LOGIC #######################

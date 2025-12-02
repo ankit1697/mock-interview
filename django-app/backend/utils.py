@@ -1,5 +1,8 @@
 from openai import OpenAI
 import os
+import sys
+import subprocess
+import tempfile
 from dotenv import load_dotenv, find_dotenv
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
@@ -11,6 +14,14 @@ load_dotenv(find_dotenv(), override=True)
 _key = os.getenv("OPENAI_API_KEY")
 _key = (_key.strip() if _key else None)
 client = OpenAI(api_key=_key)
+
+# Add parent directory to path to import analyze_behavior
+# utils.py is at: django-app/backend/utils.py
+# Need to go up 3 levels to get to project root: mock-interview/
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+cgpt_path = PROJECT_ROOT / 'cgpt'
+if str(cgpt_path) not in sys.path:
+    sys.path.insert(0, str(cgpt_path))
 
 def transcribe_audio(audio_file):
     """Transcribe audio using OpenAI Whisper"""
@@ -65,3 +76,138 @@ def text_to_speech(text, voice="alloy"):
 def read_file(path):
     with open(path, 'r', encoding='utf-8') as f:
         return f.read()
+
+def extract_audio_with_ffmpeg(video_path, audio_path=None, duration_seconds=None):
+    """
+    Extract audio from video using ffmpeg directly (bypasses MoviePy duration requirement).
+    
+    Args:
+        video_path: Path to the video file
+        audio_path: Optional output path for audio file (defaults to temp file)
+        duration_seconds: Optional duration to limit extraction if needed
+    
+    Returns:
+        Path to the extracted audio file
+    """
+    # Check if ffmpeg is available
+    try:
+        subprocess.run(['ffmpeg', '-version'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        raise Exception("ffmpeg is not available. Please install ffmpeg to enable audio analysis.")
+    
+    if audio_path is None:
+        # Create temp file for audio
+        temp_dir = tempfile.gettempdir()
+        audio_path = os.path.join(temp_dir, f"extracted_audio_{os.getpid()}.wav")
+    
+    try:
+        # Build ffmpeg command
+        # -i: input file
+        # -vn: no video
+        # -acodec pcm_s16le: PCM 16-bit audio codec
+        # -ar 44100: sample rate 44100 Hz
+        # -ac 1: mono channel
+        # -y: overwrite output file
+        # -loglevel error: Only show errors
+        cmd = [
+            'ffmpeg',
+            '-loglevel', 'error',  # Suppress normal output, only show errors
+            '-i', video_path,
+            '-vn',  # No video
+            '-acodec', 'pcm_s16le',  # PCM 16-bit
+            '-ar', '44100',  # Sample rate
+            '-ac', '1',  # Mono
+            '-y',  # Overwrite output
+            audio_path
+        ]
+        
+        # Run ffmpeg
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+            timeout=300  # 5 minute timeout
+        )
+        
+        # Verify output file exists and has content
+        if os.path.exists(audio_path) and os.path.getsize(audio_path) > 0:
+            return audio_path
+        else:
+            raise Exception(f"Audio extraction failed: output file not created or empty")
+            
+    except subprocess.TimeoutExpired:
+        raise Exception("Audio extraction timed out after 5 minutes")
+    except subprocess.CalledProcessError as e:
+        error_msg = e.stderr.decode('utf-8') if e.stderr else str(e)
+        raise Exception(f"ffmpeg error: {error_msg}")
+    except Exception as e:
+        raise Exception(f"Audio extraction error: {str(e)}")
+
+def analyze_video_behavior(video_path, duration_seconds=None):
+    """
+    Analyze video behavior using the analyze_behavior.py script.
+    
+    Args:
+        video_path: Path to the video file
+        duration_seconds: Optional known duration in seconds (for validation/logging)
+    
+    Returns:
+        Formatted feedback text or None if analysis fails.
+    """
+    try:
+        # Import analyze_behavior module first to patch extract_audio
+        import analyze_behavior
+        
+        # Patch extract_audio to use our ffmpeg-based version (avoids MoviePy duration requirement)
+        def patched_extract_audio(video_path, audio_path="temp_audio.wav"):
+            """Patched version that uses ffmpeg instead of MoviePy"""
+            try:
+                return extract_audio_with_ffmpeg(video_path, audio_path=audio_path)
+            except Exception as e:
+                print(f"Error in patched extract_audio: {e}")
+                raise
+        
+        # Replace the extract_audio function in the module
+        analyze_behavior.extract_audio = patched_extract_audio
+        
+        # Now import the analysis functions - using new API
+        from analyze_behavior import (
+            summarize_results,
+            detect_behavior_violations,
+            format_metric_feedback
+        )
+        
+        # Log duration if provided
+        if duration_seconds:
+            print(f"Analyzing video with known duration: {duration_seconds}s")
+        
+        # Use the new summarize_results function which handles everything internally
+        # It uses 10-second time windows by default
+        window_seconds = 10
+        summary = summarize_results(video_path, window_seconds=window_seconds)
+        
+        if summary.empty:
+            return "No usable video data detected. The video may be too short or unclear."
+        
+        print(f"Summary generated with {len(summary)} time windows. Columns: {summary.columns.tolist()}")
+        
+        # Detect behavior violations using the new function
+        violations = detect_behavior_violations(summary)
+        
+        # Format feedback using the new function
+        feedback = format_metric_feedback(violations, window_seconds=window_seconds)
+        
+        if not feedback:
+            return "No significant behavioral changes detected. Your posture and presentation remained consistent throughout the interview."
+        
+        return feedback
+        
+    except ImportError as e:
+        print(f"Error importing analyze_behavior: {e}")
+        return f"Visual analysis unavailable: Required dependencies may not be installed ({str(e)})"
+    except Exception as e:
+        print(f"Error analyzing video behavior: {e}")
+        import traceback
+        traceback.print_exc()
+        return f"Error analyzing video: {str(e)}"
