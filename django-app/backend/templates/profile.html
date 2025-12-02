@@ -14,10 +14,10 @@
     </div>
 
     <!-- Performance Dashboard -->
-    <div class="flex items-center gap-2 px-4 py-4 hover:bg-gray-100 cursor-pointer">
+    <a href="{% url 'performance_dashboard' %}"><div class="flex items-center gap-2 px-4 py-4 hover:bg-gray-100 cursor-pointer">
       <img src="{% static 'backend/images/dashboard.png' %}" alt="Dashboard" class="w-5 h-auto" />
       <span class="text-gray-700">Performance Dashboard</span>
-    </div>
+    </div></a>
 
     <!-- Past Interviews -->
     <a href="{% url 'past_interviews' %}"><div class="flex items-center gap-2 px-4 py-4 hover:bg-gray-100 cursor-pointer">
