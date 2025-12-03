@@ -5,3 +5,5 @@ backend/__pycache__
 *.pyc
 
 .env
+
+django-app/media/
