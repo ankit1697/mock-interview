@@ -5,7 +5,7 @@
 
 <div class="flex">
   <!-- Sidebar -->
-  <aside class="h-screen sticky top-16 border-r shadow-sm hidden md:flex flex-col justify-between bg-white sidenav w-64">
+  <aside class="h-screen sticky top-20 border-r shadow-sm hidden md:flex flex-col justify-between bg-white sidenav w-64">
     
     <!-- Top Links -->
     <div>
@@ -18,10 +18,10 @@
       </a>
 
       <!-- Performance Dashboard -->
-      <div class="flex items-center gap-2 px-4 py-4 hover:bg-gray-100 cursor-pointer">
+      <a href="{% url 'performance_dashboard' %}"><div class="flex items-center gap-2 px-4 py-4 hover:bg-gray-100 cursor-pointer">
         <img src="{% static 'backend/images/dashboard.png' %}" alt="Dashboard" class="w-5 h-auto" />
         <span class="text-gray-700">Performance Dashboard</span>
-      </div>
+      </div></a>
 
       <!-- Past Interviews (active) -->
       <a href="{% url 'past_interviews' %}">
@@ -124,7 +124,36 @@
               </svg>
               Visual Behavior Analysis
             </h3>
-            <div class="text-gray-700 whitespace-pre-line bg-white p-4 rounded border border-blue-100 leading-relaxed">{{ completed.visual_feedback }}</div>
+            <div id="visualFeedbackContent" class="text-gray-700 whitespace-pre-line bg-white p-4 rounded border border-blue-100 leading-relaxed">{{ completed.visual_feedback }}</div>
+          </div>
+          
+          <!-- Video Snippet Modal -->
+          <div id="videoSnippetModal" class="hidden fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col">
+              <!-- Modal Header -->
+              <div class="flex items-center justify-between p-4 border-b bg-gradient-to-r from-blue-50 to-indigo-50">
+                <div>
+                  <h3 class="text-lg font-semibold text-gray-900">Video Snippet</h3>
+                  <p id="snippetTimestamp" class="text-sm text-gray-600 mt-1"></p>
+                </div>
+                <button id="closeVideoModal" class="text-gray-400 hover:text-gray-600 transition p-2 hover:bg-gray-100 rounded">
+                  <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                  </svg>
+                </button>
+              </div>
+              
+              <!-- Modal Body -->
+              <div class="flex-1 p-4 overflow-auto bg-gray-50">
+                <div class="bg-black rounded-lg overflow-hidden shadow-lg">
+                  <video id="snippetVideo" controls class="w-full" style="max-height: 70vh;">
+                    <source src="{{ completed.video_file.url }}" type="video/webm">
+                    Your browser does not support the video tag.
+                  </video>
+                </div>
+                <p class="mt-3 text-xs text-gray-500 text-center">Click on timestamps in the feedback to view specific video segments</p>
+              </div>
+            </div>
           </div>
         {% else %}
           <div class="mt-8 p-6 bg-yellow-50 rounded-lg border border-yellow-200">
@@ -171,8 +200,183 @@ function switchTab(tabName) {
     document.getElementById('visualContent').classList.remove('hidden');
     document.getElementById('visualTab').classList.add('active', 'border-orange-500', 'text-orange-600');
     document.getElementById('visualTab').classList.remove('border-transparent', 'text-gray-500');
+    
+    // Process timestamps when visual tab is opened
+    processVisualFeedbackTimestamps();
   }
 }
+
+function processVisualFeedbackTimestamps() {
+  const feedbackDiv = document.getElementById('visualFeedbackContent');
+  if (!feedbackDiv) return;
+  
+  // Check if already processed (has clickable links)
+  if (feedbackDiv.querySelector('a[data-start]')) {
+    return;
+  }
+  
+  const originalText = feedbackDiv.textContent || feedbackDiv.innerText;
+  
+  // Regex to match timestamp patterns like "10s–20s" or "10s-20s"
+  const timestampRegex = /(\d+)s[–-](\d+)s/g;
+  
+  let processedText = originalText;
+  const timestamps = [];
+  let match;
+  
+  // Reset regex lastIndex for multiple searches
+  timestampRegex.lastIndex = 0;
+  
+  // Find all timestamps and collect them
+  while ((match = timestampRegex.exec(originalText)) !== null) {
+    const startTime = parseInt(match[1]);
+    const endTime = parseInt(match[2]);
+    const originalTimestamp = match[0];
+    
+    // Only add if not already added
+    if (!timestamps.find(t => t.startTime === startTime && t.endTime === endTime)) {
+      timestamps.push({ startTime, endTime, originalTimestamp });
+    }
+  }
+  
+  // Replace timestamps with clickable links (in reverse order to preserve positions)
+  timestamps.reverse().forEach(({ startTime, endTime, originalTimestamp }) => {
+    const link = `<a href="#" class="text-blue-600 hover:text-blue-800 underline font-medium cursor-pointer" data-start="${startTime}" data-end="${endTime}">${originalTimestamp}</a>`;
+    processedText = processedText.replace(originalTimestamp, link);
+  });
+  
+  // Update the content with clickable links, preserving line breaks
+  feedbackDiv.innerHTML = processedText.split('\n').map(line => line || '<br>').join('<br>');
+  
+  // Add click event listeners to timestamp links
+  feedbackDiv.querySelectorAll('a[data-start]').forEach(link => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      const startTime = parseFloat(link.getAttribute('data-start'));
+      const endTime = parseFloat(link.getAttribute('data-end'));
+      openVideoSnippet(startTime, endTime);
+    });
+  });
+}
+
+function openVideoSnippet(startTime, endTime) {
+  const modal = document.getElementById('videoSnippetModal');
+  const video = document.getElementById('snippetVideo');
+  const timestampText = document.getElementById('snippetTimestamp');
+  
+  if (!modal || !video) return;
+  
+  // Format timestamp text
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+  
+  timestampText.textContent = `Showing: ${formatTime(startTime)} - ${formatTime(endTime)} (${Math.floor(endTime - startTime)}s segment)`;
+  
+  // Show modal
+  modal.classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+  
+  // Store original video source
+  const videoSrc = video.querySelector('source').src;
+  
+  // Load and seek to start time when video is ready
+  const seekToTime = () => {
+    video.currentTime = startTime;
+    // Auto-play is usually blocked by browsers, but we can try
+    video.play().catch(err => {
+      console.log('Auto-play prevented:', err);
+    });
+  };
+  
+  // Set up video ready handler
+  const setupVideo = () => {
+    if (video.readyState >= 1) {
+      seekToTime();
+    } else {
+      video.addEventListener('loadedmetadata', seekToTime, { once: true });
+      video.load();
+    }
+  };
+  
+  setupVideo();
+  
+  // Optional: Pause video at end time
+  let endTimeCheckInterval;
+  const checkEndTime = () => {
+    if (video.currentTime >= endTime && !video.paused) {
+      video.pause();
+      if (endTimeCheckInterval) {
+        clearInterval(endTimeCheckInterval);
+      }
+    }
+  };
+  
+  // Check every 100ms (more reliable than timeupdate for precise stopping)
+  endTimeCheckInterval = setInterval(checkEndTime, 100);
+  
+  // Clean up when video is closed
+  const cleanup = () => {
+    if (endTimeCheckInterval) {
+      clearInterval(endTimeCheckInterval);
+    }
+    video.removeEventListener('timeupdate', checkEndTime);
+    video.removeEventListener('loadedmetadata', seekToTime);
+  };
+  
+  // Store cleanup function for modal close
+  modal._cleanup = cleanup;
+}
+
+function closeVideoSnippetModal() {
+  const modal = document.getElementById('videoSnippetModal');
+  const video = document.getElementById('snippetVideo');
+  
+  if (!modal) return;
+  
+  // Clean up event listeners
+  if (modal._cleanup) {
+    modal._cleanup();
+    delete modal._cleanup;
+  }
+  
+  // Pause video
+  if (video) {
+    video.pause();
+  }
+  
+  // Hide modal
+  modal.classList.add('hidden');
+  document.body.style.overflow = '';
+}
+
+// Initialize modal close handlers
+document.addEventListener('DOMContentLoaded', () => {
+  const closeBtn = document.getElementById('closeVideoModal');
+  const modal = document.getElementById('videoSnippetModal');
+  
+  if (closeBtn) {
+    closeBtn.addEventListener('click', closeVideoSnippetModal);
+  }
+  
+  // Close modal when clicking outside
+  if (modal) {
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        closeVideoSnippetModal();
+      }
+    });
+  }
+  
+  // Close modal with Escape key
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && modal && !modal.classList.contains('hidden')) {
+      closeVideoSnippetModal();
+    }
+  });
+});
 </script>
 
 <style>

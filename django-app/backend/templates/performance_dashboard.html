@@ -3,7 +3,7 @@
 {% load static %}
 
 <div class="flex">
-<aside class="h-screen sticky top-16 border-r shadow-sm hidden md:flex flex-col justify-between bg-white sidenav w-64">
+<aside class="h-screen sticky top-20 border-r shadow-sm hidden md:flex flex-col justify-between bg-white sidenav w-64">
   
   <!-- Top Links -->
   <div>
@@ -134,7 +134,7 @@
           </tr>
         </thead>
         <tbody class="bg-white divide-y divide-gray-200">
-          {% for interview in performance_data|slice:":10" %}
+          {% for interview in performance_data %}
           <tr>
             <td class="px-4 py-2 text-sm text-gray-900">{{ interview.date|date:"M d, Y" }}</td>
             <td class="px-4 py-2 text-sm text-gray-900">{{ interview.company }}</td>

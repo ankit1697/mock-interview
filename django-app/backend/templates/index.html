@@ -2,20 +2,19 @@
 {% block content %}
 {% load static %}
 
-  <!-- 🔹 Hero Section -->
+<!-- Hero Section -->
 <section class="hero">
-  
-  <!-- 🔹 Pre-Hero Full Width Section -->
+  <!-- Pre-Hero Full Width Section -->
   <div class="w-full pre-hero">
     <div class="max-w-7xl mx-auto h-full flex flex-col md:flex-row items-center justify-between px-6">
 
       <!-- Left Text -->
       <div class="text-left md:w-1/2 mb-6 md:mb-0">
-      	{% if user.is_authenticated %}
-      	<h2 class="text-4xl font-bold text-gray-800">Welcome back, {{ user.first_name}}!</h2>
-      	{% else %}
-        <h2 class="text-4xl font-bold text-gray-800">Build Confidence.</h2>
-        <h2 class="text-4xl font-bold text-gray-800">Get Hired.</h2>
+        {% if user.is_authenticated %}
+          <h2 class="text-4xl font-bold text-gray-800">Welcome back, {{ user.first_name }}!</h2>
+        {% else %}
+          <h2 class="text-4xl font-bold text-gray-800">Build Confidence.</h2>
+          <h2 class="text-4xl font-bold text-gray-800">Get Hired.</h2>
         {% endif %}
       </div>
 
@@ -26,12 +25,109 @@
 
     </div>
   </div>
-<div style="position: relative; width: 100%;">
-  <img src="{% static 'backend/images/wave-2.svg' %}" 
-       style="position: absolute; top: 12px; left: 0; width: 100%; height: auto; z-index: 0;" />
 
-  <img src="{% static 'backend/images/wave.svg' %}" 
-       style="position: absolute; top: 0; left: 0; width: 100%; height: auto; z-index: 10;" />
-</div>
+  <!-- Top waves under hero -->
+  <div class="hero-waves">
+    <img src="{% static 'backend/images/wave-2.svg' %}"
+         class="hero-wave hero-wave-back"
+         alt="">
+    <img src="{% static 'backend/images/wave.svg' %}"
+         class="hero-wave hero-wave-front"
+         alt="">
+  </div>
 </section>
+
+<!-- Features Section (4 rows) -->
+<section class="features bg-white py-16">
+  <div class="max-w-7xl mx-auto px-6 space-y-16">
+
+    <!-- 1. AI-Powered Mock Interviews -->
+    <div class="feature-row md:flex md:items-center md:gap-10">
+      <div class="feature-image md:w-5/12 mb-8 md:mb-0">
+        <img src="{% static 'backend/images/mock_interviews.png' %}"
+             alt="AI-Powered Mock Interviews"
+             class="feature-img">
+      </div>
+      <div class="feature-text md:w-7/12">
+        <h3 class="feature-title">AI-Powered Mock Interviews</h3>
+        <p class="feature-body">
+          Experience realistic, real-time interview simulations with our intelligent AI interviewer.
+          It dynamically adapts questions based on your resume, job description, and responses—just
+          like a real interviewer.
+        </p>
+      </div>
+    </div>
+
+    <!-- 2. Holistic Candidate Evaluation -->
+    <div class="feature-row md:flex md:flex-row-reverse md:items-center md:gap-10">
+      <div class="feature-image md:w-5/12 mb-8 md:mb-0">
+        <img src="{% static 'backend/images/evaluation.png' %}"
+             alt="Holistic Candidate Evaluation"
+             class="feature-img">
+      </div>
+      <div class="feature-text md:w-7/12">
+        <h3 class="feature-title">AI Trained on Real-World Mock Interviews</h3>
+        <p class="feature-body">
+          Our interviewing engine continuously learns from hundreds of real mock interviews to 
+          understand how candidates think, respond, and improve, making it better at asking meaningful
+          questions, identifying skill gaps, and delivering highly personalized, actionable feedback.
+        </p>
+      </div>
+    </div>
+
+    <!-- 3. Real-Time Performance Feedback -->
+    <div class="feature-row md:flex md:items-center md:gap-10">
+      <div class="feature-image md:w-5/12 mb-8 md:mb-0">
+        <img src="{% static 'backend/images/real_time.png' %}"
+             alt="Real-Time Performance Feedback"
+             class="feature-img">
+      </div>
+      <div class="feature-text md:w-7/12">
+        <h3 class="feature-title">Holistic, Multi-Dimensional Candidate Evaluation</h3>
+        <p class="feature-body">
+          Evaluation across multiple dimensions of interviewing—technical accuracy, 
+          communication clarity, and structured problem-solving, while also analyzing real-time facial and 
+          audio cues such as confidence, energy, posture, tone, and engagement.
+        </p>
+      </div>
+    </div>
+
+    <!-- 4. Personal Progress Dashboard -->
+    <div class="feature-row md:flex md:flex-row-reverse md:items-center md:gap-10">
+      <div class="feature-image md:w-5/12 mb-8 md:mb-0">
+        <img src="{% static 'backend/images/performance_dashboard.png' %}"
+             alt="Personal Progress Dashboard"
+             class="feature-img">
+      </div>
+      <div class="feature-text md:w-7/12">
+        <h3 class="feature-title">Personal Progress Dashboard</h3>
+        <p class="feature-body">
+          Stay on top of your interview prep with a personalized dashboard. Track your performance
+          trends, review past interviews, and measure growth over time—all in one place.
+        </p>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+
+<footer class="landing-footer">
+
+  <div class="footer-main">
+    <div class="max-w-6xl mx-auto px-6 py-10 text-center">
+      <h3 class="text-xl font-semibold mb-3">PRISM</h3>
+      <p class="text-sm mb-1">
+        <a href="#" class="footer-link">About Us</a>
+      </p>
+      <p class="text-sm mb-4">
+        <a href="mailto:hello@prep.ai" class="footer-link">hello@prep.ai</a>
+      </p>
+      <p class="text-xs opacity-90">
+        Copyright &copy; {% now "Y" %} PRISM. All Rights Reserved.
+      </p>
+    </div>
+  </div>
+</footer>
+
 {% endblock %}
