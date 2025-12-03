@@ -128,7 +128,6 @@
           <tr class="bg-gray-50">
             <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
             <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Company</th>
-            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
             <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Score</th>
             <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Rating</th>
             <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Key Areas</th>
@@ -139,7 +138,6 @@
           <tr>
             <td class="px-4 py-2 text-sm text-gray-900">{{ interview.date|date:"M d, Y" }}</td>
             <td class="px-4 py-2 text-sm text-gray-900">{{ interview.company }}</td>
-            <td class="px-4 py-2 text-sm text-gray-900">{{ interview.type }}</td>
             <td class="px-4 py-2 text-sm font-medium">{{ interview.overall_score }}/5.0</td>
             <td class="px-4 py-2 text-sm">
               <span class="px-2 py-1 text-xs rounded-full 
@@ -198,7 +196,7 @@ document.addEventListener('DOMContentLoaded', function() {
           callbacks: {
             label: function(context) {
               const data = performanceData[context.dataIndex];
-              return `Score: ${context.parsed.y}/5.0 (${data.company} - ${data.type})`;
+              return `Score: ${context.parsed.y}/5.0 (${data.company})`;
             }
           }
         }

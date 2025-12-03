@@ -425,7 +425,6 @@ def performance_dashboard(request):
                         'date': date_str,
                         'score': float(round(overall_score, 2)),
                         'company': completed.interview.company,
-                        'type': completed.interview.get_interview_type_display()
                     })
                     
                     # Collect dimension scores from results
@@ -445,7 +444,6 @@ def performance_dashboard(request):
                     performance_data.append({
                         'date': completed.completed_at,
                         'company': completed.interview.company,
-                        'type': completed.interview.get_interview_type_display(),
                         'overall_score': float(overall_score),
                         'rating': eval_data.get('overall_rating'),
                         'summary': eval_data.get('overall_feedback', {}).get('summary', ''),
