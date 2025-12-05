@@ -147,7 +147,16 @@ def summarize_results(video_path, window_seconds=10):
     return summary.reset_index()
 
 
-def detect_behavior_violations(df):
+def detect_behavior_violations(df, max_fraction=0.1):
+    """
+    Flag windows where metrics cross thresholds,
+    but only keep the worst `max_fraction` of those windows per metric.
+
+    max_fraction=0.3 → at most ~30% of windows per metric are flagged.
+    """
+
+    # Direction: 'above' = bad if higher than threshold
+    #            'below' = bad if lower than threshold
     thresholds = {
         "shoulder_slope_mean": ("above", 0.03),
         "spine_angle_mean":    ("above", 1.40),
@@ -157,20 +166,38 @@ def detect_behavior_violations(df):
 
     results = {}
 
-    for metric, (direction, thresh) in thresholds.items():
-        series = df[metric]
+    for metric, (direction, base_thresh) in thresholds.items():
+        series = df[metric].astype(float)
 
         if direction == "above":
-            mask = series > thresh
-        else:
-            mask = series < thresh
+            # First, keep only windows that cross the base threshold
+            candidates = series[series > base_thresh]
+            if candidates.empty:
+                results[metric] = {"windows": [], "values": [], "threshold": base_thresh, "direction": direction}
+                continue
+
+            # Among those, keep only the top `max_fraction` worst values
+            dyn_thresh = candidates.quantile(1 - max_fraction)
+            final_thresh = max(base_thresh, dyn_thresh)
+            mask = series > final_thresh
+
+        else:  # "below"
+            candidates = series[series < base_thresh]
+            if candidates.empty:
+                results[metric] = {"windows": [], "values": [], "threshold": base_thresh, "direction": direction}
+                continue
+
+            # Among those, keep only the bottom `max_fraction` worst (lowest) values
+            dyn_thresh = candidates.quantile(max_fraction)
+            final_thresh = min(base_thresh, dyn_thresh)
+            mask = series < final_thresh
 
         bad_rows = df.loc[mask]
 
         results[metric] = {
             "windows": bad_rows["time_window"].tolist(),
             "values":  bad_rows[metric].tolist(),
-            "threshold": thresh,
+            "threshold": final_thresh,
             "direction": direction,
         }
 
@@ -201,9 +228,6 @@ def format_metric_feedback(violations, window_seconds=10):
 
     return "\n".join(texts)
 
-
-
-
 # ========== MAIN ENTRY POINT ==========
 def main():
     parser = argparse.ArgumentParser(description="Behavior analysis from interview video.")
@@ -222,8 +246,9 @@ def main():
         print("No usable data from video.")
         sys.exit(0)
 
-    violations = detect_behavior_violations(summary)
+    violations = detect_behavior_violations(summary, max_fraction=0.3)
     feedback = format_metric_feedback(violations, window_seconds=10)
+
 
     print("\n===== Behavioral Feedback =====\n")
     print(feedback if feedback else "No significant negative behavioral changes detected.")

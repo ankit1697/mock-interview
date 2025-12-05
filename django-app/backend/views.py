@@ -394,10 +394,10 @@ def interview_feedback(request, completed_id):
 
 @login_required
 def performance_dashboard(request):
-    # Get all completed interviews for the user
+    # Get all completed interviews for the user, ordered by newest first
     completed_interviews = CompletedInterview.objects.filter(
         user=request.user
-    ).select_related('interview').order_by('completed_at')
+    ).select_related('interview').order_by('-completed_at')
 
     # Prepare data for charts
     performance_data = []
@@ -480,12 +480,16 @@ def performance_dashboard(request):
     if performance_data:
         overall_avg = sum(item['overall_score'] for item in performance_data) / len(performance_data)
 
-    # Get latest interview data
-    latest_interview = performance_data[-1] if performance_data else None
+    # Get latest interview data (first item since we're ordering descending)
+    latest_interview = performance_data[0] if performance_data else None
+    
+    # Limit table data to last 5 interviews (already sorted descending, so first 5)
+    table_data = performance_data[:5] if len(performance_data) > 5 else performance_data
 
     import json
     context = {
-        'performance_data': performance_data,
+        'performance_data': table_data,  # Only last 5 for the table
+        'all_performance_data': performance_data,  # Keep all data for charts if needed
         'scores_over_time_json': json.dumps(scores_over_time),
         'dimensions_data': dimensions_data,
         'dimension_averages': dimension_averages,
