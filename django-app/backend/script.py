@@ -6,7 +6,11 @@ from openai import OpenAI
 from dotenv import load_dotenv, find_dotenv
 from PyPDF2 import PdfReader
 import requests
-from .evaluation_engine import evaluate_interview_json
+from .evaluation_engine import (
+    evaluate_interview_json,
+    format_answer_evaluation_feedback,
+    format_interview_summary
+)
 
 _dotenv_path = find_dotenv()
 load_dotenv(_dotenv_path, override=True)
@@ -530,8 +534,8 @@ class InterviewSession:
 
 
     def evaluate_answer(self, answer, question=None):
-        """Evaluate a single answer using the new evaluation engine"""
-        # Use the new evaluation engine for a single question
+        """Evaluate a single answer using the evaluation engine"""
+        # Use the evaluation engine for a single question
         interview_payload = {
             "interview_id": f"session_{id(self)}",
             "candidate_name": self.personal_profile.get("name", "Candidate"),
@@ -546,31 +550,8 @@ class InterviewSession:
         
         evaluation_result = evaluate_interview_json(interview_payload, use_llm=True)
         
-        if evaluation_result and evaluation_result.get("results"):
-            result = evaluation_result["results"][0]
-            # Format the feedback in a readable way
-            feedback_parts = []
-            feedback_parts.append(f"Rating: {result.get('rating', 'N/A')} (Score: {result.get('final_score', 0)}/5)")
-            
-            subscores = result.get('subscores', {})
-            if subscores:
-                feedback_parts.append("\nDimension Scores:")
-                for dim, score in subscores.items():
-                    dim_name = dim.replace('_', ' ').title()
-                    feedback_parts.append(f"  - {dim_name}: {score}/5")
-            
-            tech_feedback = result.get('technical_feedback')
-            if tech_feedback:
-                feedback_parts.append(f"\nFeedback: {tech_feedback}")
-            
-            improvement = result.get('suggested_improvement')
-            if improvement:
-                feedback_parts.append(f"\nSuggested Improvement: {improvement}")
-            
-            return "\n".join(feedback_parts)
-        
-        # Fallback if evaluation fails
-        return "Answer recorded. Evaluation processing..."
+        # Format feedback using evaluation engine helper
+        return format_answer_evaluation_feedback(evaluation_result)
 
     def handle_unknown_answer(self, answer):
         """When candidate says they don't know, produce a short hint and a simpler follow-up question."""
@@ -701,7 +682,7 @@ Candidate's raw reply: {answer}
         return "\n".join(feedbacks)
 
     def get_interview_summary(self):
-        """Generate comprehensive interview summary using the new evaluation engine"""
+        """Generate comprehensive interview summary using the evaluation engine"""
         # Prepare questions for evaluation
         questions_for_eval = []
         for idx, q_data in enumerate(self.interview_data):
@@ -726,42 +707,5 @@ Candidate's raw reply: {answer}
         # Store the full evaluation result for later use
         self.full_evaluation = evaluation_result
         
-        # Format a human-readable summary
-        summary_parts = []
-        summary_parts.append("=" * 60)
-        summary_parts.append("INTERVIEW EVALUATION SUMMARY")
-        summary_parts.append("=" * 60)
-        
-        overall_score = evaluation_result.get("overall_score")
-        overall_rating = evaluation_result.get("overall_rating")
-        
-        if overall_score:
-            summary_parts.append(f"\nOverall Score: {overall_score}/5.0 ({overall_rating})")
-        
-        overall_feedback = evaluation_result.get("overall_feedback", {})
-        if overall_feedback:
-            summary_text = overall_feedback.get("summary")
-            if summary_text:
-                summary_parts.append(f"\n{summary_text}")
-            
-            areas = overall_feedback.get("areas_for_improvement", [])
-            if areas:
-                summary_parts.append("\nAreas for Improvement:")
-                for area in areas:
-                    summary_parts.append(f"  • {area}")
-        
-        # Add per-question breakdown
-        summary_parts.append("\n" + "=" * 60)
-        summary_parts.append("QUESTION-BY-QUESTION BREAKDOWN")
-        summary_parts.append("=" * 60)
-        
-        for result in evaluation_result.get("results", []):
-            if result.get("skipped"):
-                summary_parts.append(f"\nQ{result['id']}: {result['question'][:80]}...")
-                summary_parts.append(f"  [Icebreaker - Not Scored]")
-            else:
-                summary_parts.append(f"\nQ{result['id']}: {result['question'][:80]}...")
-                summary_parts.append(f"  Score: {result['final_score']}/5.0 ({result['rating']})")
-                summary_parts.append(f"  Feedback: {result.get('technical_feedback', 'N/A')}")
-        
-        return "\n".join(summary_parts)
+        # Format summary using evaluation engine helper
+        return format_interview_summary(evaluation_result)

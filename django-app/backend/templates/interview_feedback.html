@@ -79,6 +79,52 @@
     <!-- Tab Content -->
     <!-- Technical Feedback Tab -->
     <div id="technicalContent" class="tab-content">
+      <!-- Dimension Scores Donut Charts -->
+      <div class="mb-8">
+        <h3 class="text-xl font-semibold mb-4">Performance by Dimension</h3>
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-6">
+          <!-- Technical Reasoning -->
+          <div class="bg-white p-4 rounded-lg shadow-sm border text-center">
+            <h4 class="text-sm font-medium text-gray-600 mb-3">Technical Reasoning</h4>
+            <div class="relative" style="height: 150px;">
+              <canvas id="technicalReasoningChart"></canvas>
+            </div>
+          </div>
+
+          <!-- Accuracy -->
+          <div class="bg-white p-4 rounded-lg shadow-sm border text-center">
+            <h4 class="text-sm font-medium text-gray-600 mb-3">Accuracy</h4>
+            <div class="relative" style="height: 150px;">
+              <canvas id="accuracyChart"></canvas>
+            </div>
+          </div>
+
+          <!-- Confidence -->
+          <div class="bg-white p-4 rounded-lg shadow-sm border text-center">
+            <h4 class="text-sm font-medium text-gray-600 mb-3">Confidence</h4>
+            <div class="relative" style="height: 150px;">
+              <canvas id="confidenceChart"></canvas>
+            </div>
+          </div>
+
+          <!-- Problem Solving -->
+          <div class="bg-white p-4 rounded-lg shadow-sm border text-center">
+            <h4 class="text-sm font-medium text-gray-600 mb-3">Problem Solving</h4>
+            <div class="relative" style="height: 150px;">
+              <canvas id="problemSolvingChart"></canvas>
+            </div>
+          </div>
+
+          <!-- Flow -->
+          <div class="bg-white p-4 rounded-lg shadow-sm border text-center">
+            <h4 class="text-sm font-medium text-gray-600 mb-3">Flow</h4>
+            <div class="relative" style="height: 150px;">
+              <canvas id="flowChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Summary Section -->
       <div class="mb-8 p-4 bg-gray-100 rounded-lg">
         <h3 class="text-xl font-semibold mb-2">Overall Summary</h3>
@@ -87,7 +133,7 @@
 
       <!-- Transcript Section -->
       <div>
-        <h3 class="text-xl font-semibold mb-4">Detailed Q&A</h3>
+        <h3 class="text-xl font-semibold mb-4">Detailed Feedback</h3>
 
         {% if transcript %}
           <div class="space-y-6">
@@ -179,7 +225,105 @@
   </div>
 </div>
 
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 <script>
+// Create donut charts for dimension scores
+document.addEventListener('DOMContentLoaded', function() {
+  // Plugin to draw text in center of donut chart
+  const centerTextPlugin = {
+    id: 'centerText',
+    afterDraw: (chart) => {
+      const ctx = chart.ctx;
+      const chartArea = chart.chartArea;
+      const centerX = (chartArea.left + chartArea.right) / 2;
+      const centerY = (chartArea.top + chartArea.bottom) / 2;
+      const text = chart.config.options.centerText || '';
+      
+      if (!text) return;
+      
+      ctx.save();
+      ctx.font = 'bold 28px Arial';
+      ctx.fillStyle = '#111827';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, centerX, centerY);
+      ctx.restore();
+    }
+  };
+
+  const createDonutChart = (canvasId, score, maxScore, label) => {
+    const ctx = document.getElementById(canvasId);
+    if (!ctx) return;
+    
+    const percentage = score ? (score / maxScore) * 100 : 0;
+    const remaining = 100 - percentage;
+    const displayScore = score ? score.toFixed(1) : 'N/A';
+    
+    new Chart(ctx, {
+      type: 'doughnut',
+      plugins: [centerTextPlugin],
+      data: {
+        labels: [label, 'Remaining'],
+        datasets: [{
+          data: [percentage, remaining],
+          backgroundColor: [
+            'rgb(255,157,0)', // Orange-500 for score (theme color)
+            'rgb(229, 231, 235)' // Gray for remaining
+          ],
+          borderWidth: 0
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        centerText: displayScore,
+        plugins: {
+          legend: {
+            display: false
+          },
+          tooltip: {
+            enabled: false
+          }
+        },
+        cutout: '75%'
+      }
+    });
+  };
+
+  // Create all 5 donut charts
+  {% if completed.technical_reasoning_avg %}
+  createDonutChart('technicalReasoningChart', {{ completed.technical_reasoning_avg }}, 5.0, 'Technical Reasoning');
+  {% else %}
+  createDonutChart('technicalReasoningChart', null, 5.0, 'Technical Reasoning');
+  {% endif %}
+  
+  {% if completed.accuracy_avg %}
+  createDonutChart('accuracyChart', {{ completed.accuracy_avg }}, 5.0, 'Accuracy');
+  {% else %}
+  createDonutChart('accuracyChart', null, 5.0, 'Accuracy');
+  {% endif %}
+  
+  {% if completed.confidence_avg %}
+  createDonutChart('confidenceChart', {{ completed.confidence_avg }}, 5.0, 'Confidence');
+  {% else %}
+  createDonutChart('confidenceChart', null, 5.0, 'Confidence');
+  {% endif %}
+  
+  {% if completed.problem_solving_avg %}
+  createDonutChart('problemSolvingChart', {{ completed.problem_solving_avg }}, 5.0, 'Problem Solving');
+  {% else %}
+  createDonutChart('problemSolvingChart', null, 5.0, 'Problem Solving');
+  {% endif %}
+  
+  {% if completed.flow_avg %}
+  createDonutChart('flowChart', {{ completed.flow_avg }}, 5.0, 'Flow');
+  {% else %}
+  createDonutChart('flowChart', null, 5.0, 'Flow');
+  {% endif %}
+});
+
 function switchTab(tabName) {
   // Hide all tab contents
   document.getElementById('technicalContent').classList.add('hidden');

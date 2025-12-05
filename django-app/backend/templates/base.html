@@ -25,7 +25,7 @@
         <div class="flex items-center space-x-6">
       {% if user.is_authenticated %}
         <a href="{% url 'setup_interview' %}" class="nav-link text-lg">Mock Interview</a>
-        <a href="/profile" class="nav-link text-lg">Dashboard</a>
+        <a href="{% url 'performance_dashboard' %}" class="nav-link text-lg">Dashboard</a>
         <a href="{% url 'profile' %}" class="nav-link text-lg">Profile</a>
         <a href="{% url 'account_logout' %}" class="nav-link text-lg">Logout</a>
       {% else %}

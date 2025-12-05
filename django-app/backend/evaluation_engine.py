@@ -466,10 +466,68 @@ def evaluate_interview_json(interview: Dict, use_llm: bool = True) -> Dict:
     }
 
 
+def format_answer_evaluation_feedback(evaluation_result: Dict[str, Any]) -> str:
+    """Format a single answer evaluation result into human-readable feedback text."""
+    if not evaluation_result or not evaluation_result.get("results"):
+        return "Answer recorded. Evaluation processing..."
+    
+    result = evaluation_result["results"][0]
+    feedback_parts = []
+    
+    feedback_parts.append(f"Rating: {result.get('rating', 'N/A')} (Score: {result.get('final_score', 0)}/5)")
+    
+    subscores = result.get('subscores', {})
+    if subscores:
+        feedback_parts.append("\nDimension Scores:")
+        for dim, score in subscores.items():
+            dim_name = dim.replace('_', ' ').title()
+            feedback_parts.append(f"  - {dim_name}: {score}/5")
+    
+    tech_feedback = result.get('technical_feedback')
+    if tech_feedback:
+        feedback_parts.append(f"\nFeedback: {tech_feedback}")
+    
+    improvement = result.get('suggested_improvement')
+    if improvement:
+        feedback_parts.append(f"\nSuggested Improvement: {improvement}")
+    
+    return "\n".join(feedback_parts)
+
+
+def format_interview_summary(evaluation_result: Dict[str, Any]) -> str:
+    """Format the complete interview evaluation result into a human-readable summary."""
+    if not evaluation_result:
+        return "No evaluation data available."
+    
+    summary_parts = []
+    
+    overall_score = evaluation_result.get("overall_score")
+    overall_rating = evaluation_result.get("overall_rating")
+    
+    if overall_score:
+        summary_parts.append(f"\nOverall Score: {overall_score}/5.0 ({overall_rating})")
+    
+    overall_feedback = evaluation_result.get("overall_feedback", {})
+    if overall_feedback:
+        summary_text = overall_feedback.get("summary")
+        if summary_text:
+            summary_parts.append(f"\n{summary_text}")
+        
+        areas = overall_feedback.get("areas_for_improvement", [])
+        if areas:
+            summary_parts.append("\nAreas for Improvement:")
+            for area in areas:
+                summary_parts.append(f"  • {area}")
+    
+    return "\n".join(summary_parts) if summary_parts else "No summary available."
+
+
 __all__ = [
     "evaluate_interview_json",
     "aggregate_weighted_score",
     "map_score_to_label",
     "default_heuristic_score",
+    "format_answer_evaluation_feedback",
+    "format_interview_summary",
     "RUBRIC_WEIGHTS",
 ]
