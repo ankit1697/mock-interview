@@ -474,6 +474,40 @@ def performance_dashboard(request):
                 'score': 0.0,
                 'percentage': 0
             }
+    
+    # Calculate averages for behavioral metrics
+    behavioral_fields_list = [
+        ('engagement_score', 'Engagement'),
+        ('engaging_tone_score', 'Engaging Tone'),
+        ('excitement_score', 'Excitement'),
+        ('friendliness_score', 'Friendliness'),
+        ('smile_score', 'Smile')
+    ]
+    
+    behavioral_averages_list = []
+    
+    # Calculate averages for each behavioral metric
+    for field, name in behavioral_fields_list:
+        scores = []
+        # Collect scores from all completed interviews
+        for completed in completed_interviews:
+            value = getattr(completed, field, None)
+            if value is not None:
+                scores.append(float(value))
+        
+        if scores:
+            avg_score = sum(scores) / len(scores)
+            behavioral_averages_list.append({
+                'name': name,
+                'score': float(round(avg_score, 3)),
+                'count': len(scores)
+            })
+        else:
+            behavioral_averages_list.append({
+                'name': name,
+                'score': None,
+                'count': 0
+            })
 
     # Calculate overall average score
     overall_avg = 0.0
@@ -487,13 +521,17 @@ def performance_dashboard(request):
     table_data = performance_data[:5] if len(performance_data) > 5 else performance_data
 
     import json
+    # Reverse scores_over_time so oldest dates appear first on the chart
+    scores_over_time_reversed = list(reversed(scores_over_time))
+    
     context = {
         'performance_data': table_data,  # Only last 5 for the table
         'all_performance_data': performance_data,  # Keep all data for charts if needed
-        'scores_over_time_json': json.dumps(scores_over_time),
+        'scores_over_time_json': json.dumps(scores_over_time_reversed),
         'dimensions_data': dimensions_data,
         'dimension_averages': dimension_averages,
         'dimension_names': dimension_names,
+        'behavioral_averages_list': behavioral_averages_list,
         'interview_dates': interview_dates,
         'total_interviews': len(performance_data),
         'overall_average': float(round(overall_avg, 1)),
@@ -548,10 +586,28 @@ def upload_interview_video(request, completed_id):
                 video_path = completed.video_file.path
                 stored_duration = completed.video_duration_seconds
                 print(f"Starting video behavior analysis for {video_path}, stored duration: {stored_duration}s")
-                visual_feedback = analyze_video_behavior(video_path, duration_seconds=stored_duration)
+                analysis_result = analyze_video_behavior(video_path, duration_seconds=stored_duration)
                 
-                if visual_feedback:
-                    completed.visual_feedback = visual_feedback
+                if analysis_result:
+                    # Handle new dictionary format
+                    if isinstance(analysis_result, dict):
+                        completed.visual_feedback = analysis_result.get('feedback', '')
+                        metrics = analysis_result.get('metrics', {})
+                        # Save individual metric scores
+                        if 'engagement_score' in metrics:
+                            completed.engagement_score = metrics['engagement_score']
+                        if 'engaging_tone_score' in metrics:
+                            completed.engaging_tone_score = metrics['engaging_tone_score']
+                        if 'excitement_score' in metrics:
+                            completed.excitement_score = metrics['excitement_score']
+                        if 'friendliness_score' in metrics:
+                            completed.friendliness_score = metrics['friendliness_score']
+                        if 'smile_score' in metrics:
+                            completed.smile_score = metrics['smile_score']
+                    else:
+                        # Fallback for old string format (backward compatibility)
+                        completed.visual_feedback = analysis_result
+                    
                     completed.save()
                     print(f"Visual feedback analysis completed for interview {completed_id}")
                 else:
