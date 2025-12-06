@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="w-full mx-auto px-4 h-[calc(100vh-5rem)] overflow-hidden">
-    <div class="h-full flex flex-col gap-3 min-h-0">
+<div class="w-full mx-auto px-4 h-[calc(100vh-5rem)] overflow-hidden" style="display: flex; flex-direction: column;">
+    <div class="h-full flex flex-col gap-3 min-h-0" style="flex: 1 1 0%; min-height: 0;">
         <div class="py-3 text-center text-sm text-gray-500 flex items-center justify-center gap-3 flex-shrink-0">
             <!-- Interviewer avatar (visible filled badge) -->
             <div id="interviewerIcon" class="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-xs font-semibold text-gray-700">AI</div>
@@ -10,7 +10,7 @@
 
         <!-- Two-column layout -->
         <!-- IMPORTANT: this must be flex and not lose these classes -->
-        <div class="flex-1 flex gap-4 overflow-hidden min-h-0">
+        <div id="mainContentArea" class="flex-1 flex gap-4 overflow-hidden min-h-0">
             <!-- Transcript / chat panel -->
             <div id="transcriptContainer"
                  class="w-2/5 flex flex-col bg-white border rounded-lg min-h-0">
@@ -75,9 +75,83 @@ const selfVideo = document.getElementById('selfVideo');
 const videoPanel = document.getElementById('videoPanel');
 const stopInterviewButton = document.getElementById('stopInterviewButton');
 const statusArea = document.getElementById('statusArea');
+const mainContentArea = document.getElementById('mainContentArea');
+const transcriptContainer = document.getElementById('transcriptContainer');
 let stopRequested = false;
 let localStreamForVideo = null;
 let interviewId = {{ interview.id }};
+
+// Function to enforce fixed heights and prevent expansion, while ensuring scrollability
+function enforceFixedHeights() {
+    if (!mainContentArea || !transcriptContainer || !videoPanel || !transcriptPane) {
+        return;
+    }
+    
+    try {
+        // Get the parent container's available height
+        const parentContainer = mainContentArea.parentElement;
+        if (!parentContainer) return;
+        
+        // Calculate available height (subtract header and gap)
+        const header = parentContainer.querySelector('.py-3');
+        const headerHeight = header ? header.offsetHeight : 0;
+        const gap = parseInt(window.getComputedStyle(parentContainer).gap) || 12;
+        const availableHeight = parentContainer.clientHeight - headerHeight - gap;
+        
+        // Set explicit height on mainContentArea to prevent flex expansion
+        if (availableHeight > 0) {
+            // Calculate transcriptPane height (subtract header from transcriptContainer)
+            const transcriptHeader = transcriptContainer.querySelector('.p-3.border-b');
+            const transcriptHeaderHeight = transcriptHeader ? transcriptHeader.offsetHeight : 0;
+            const paneHeight = availableHeight - transcriptHeaderHeight;
+            
+            if (paneHeight > 0) {
+                // CRITICAL: Set explicit pixel height (not percentage) to enable scrolling
+                // This overrides any flex-based height calculations
+                transcriptPane.style.setProperty('height', paneHeight + 'px', 'important');
+                transcriptPane.style.setProperty('max-height', paneHeight + 'px', 'important');
+                transcriptPane.style.setProperty('min-height', '0px', 'important');
+                // Force overflow scrolling - this is essential
+                transcriptPane.style.setProperty('overflow-y', 'auto', 'important');
+                transcriptPane.style.setProperty('overflow-x', 'hidden', 'important');
+                transcriptPane.style.setProperty('position', 'relative', 'important');
+                // Override flex to prevent interference with fixed height
+                transcriptPane.style.setProperty('flex', 'none', 'important');
+                
+                // Force a reflow to ensure styles are applied
+                void transcriptPane.offsetHeight;
+                
+                // Verify scrolling capability after a brief delay
+                setTimeout(() => {
+                    const canScroll = transcriptPane.scrollHeight > transcriptPane.clientHeight;
+                    if (canScroll) {
+                        console.log('✅ TranscriptPane is scrollable. Content:', transcriptPane.scrollHeight + 'px', 'Container:', transcriptPane.clientHeight + 'px');
+                    } else {
+                        console.log('ℹ️ TranscriptPane - Content fits. Content:', transcriptPane.scrollHeight + 'px', 'Container:', transcriptPane.clientHeight + 'px');
+                    }
+                }, 50);
+            }
+        }
+    } catch (e) {
+        console.warn('Error enforcing fixed heights:', e);
+    }
+}
+
+// Enforce heights on load, after a short delay to ensure DOM is ready
+window.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+        enforceFixedHeights();
+        // Also check if scrolling is needed after initial render
+        setTimeout(() => {
+            if (transcriptPane && transcriptPane.scrollHeight > transcriptPane.clientHeight) {
+                transcriptPane.scrollTop = transcriptPane.scrollHeight;
+            }
+        }, 200);
+    }, 100);
+});
+window.addEventListener('resize', () => {
+    enforceFixedHeights();
+});
 
 async function sendAudioToServer(audioBlob) {
     const formData = new FormData();
@@ -102,7 +176,15 @@ async function sendAudioToServer(audioBlob) {
             userHtml.className = 'w-full flex justify-end mb-2';
             userHtml.innerHTML = `<div class="inline-block bg-gray-100 px-4 py-2 rounded-lg max-w-[80%]">${data.transcript}</div>`;
             transcriptPane.appendChild(userHtml);
-            transcriptPane.scrollTop = transcriptPane.scrollHeight;
+            // Ensure height is fixed and scroll to bottom
+            enforceFixedHeights();
+            // Use multiple animation frames to ensure scroll happens after layout
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    transcriptPane.scrollTop = transcriptPane.scrollHeight;
+                    console.log('Scrolled to:', transcriptPane.scrollTop, 'Max scroll:', transcriptPane.scrollHeight - transcriptPane.clientHeight);
+                });
+            });
         }
 
         // Display AI response in transcriptPane (left-aligned)
@@ -111,7 +193,15 @@ async function sendAudioToServer(audioBlob) {
             aiHtml.className = 'w-full flex justify-start mb-2';
             aiHtml.innerHTML = `<div class="inline-block bg-blue-50 px-4 py-2 rounded-lg max-w-[80%]">${data.response}</div>`;
             transcriptPane.appendChild(aiHtml);
-            transcriptPane.scrollTop = transcriptPane.scrollHeight;
+            // Ensure height is fixed and scroll to bottom
+            enforceFixedHeights();
+            // Use multiple animation frames to ensure scroll happens after layout
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    transcriptPane.scrollTop = transcriptPane.scrollHeight;
+                    console.log('Scrolled to:', transcriptPane.scrollTop, 'Max scroll:', transcriptPane.scrollHeight - transcriptPane.clientHeight);
+                });
+            });
         }
 
         // Play audio response if available (await playback before recording)
@@ -155,7 +245,9 @@ async function sendAudioToServer(audioBlob) {
                 endHtml.className = 'text-orange-600 mt-4 font-semibold';
                 endHtml.textContent = 'Interview ended. Redirecting to feedback...';
                 transcriptPane.appendChild(endHtml);
-                transcriptPane.scrollTop = transcriptPane.scrollHeight;
+                setTimeout(() => {
+                    transcriptPane.scrollTop = transcriptPane.scrollHeight;
+                }, 10);
                 
                 setTimeout(() => {
                     window.location.href = `/interview/feedback/${data.completed_id}/`;
@@ -166,7 +258,9 @@ async function sendAudioToServer(audioBlob) {
                 endHtml.className = 'text-orange-600 mt-4 font-semibold';
                 endHtml.textContent = 'Interview ended.';
                 transcriptPane.appendChild(endHtml);
-                transcriptPane.scrollTop = transcriptPane.scrollHeight;
+                setTimeout(() => {
+                    transcriptPane.scrollTop = transcriptPane.scrollHeight;
+                }, 10);
             }
             return;  // Exit early to prevent further processing
         }
@@ -178,7 +272,9 @@ async function sendAudioToServer(audioBlob) {
             doneHtml.className = 'text-green-600 mt-4';
             doneHtml.textContent = 'Uploading video...';
             transcriptPane.appendChild(doneHtml);
-            transcriptPane.scrollTop = transcriptPane.scrollHeight;
+            setTimeout(() => {
+                transcriptPane.scrollTop = transcriptPane.scrollHeight;
+            }, 10);
             
             // Stop video recording and upload
             try {
@@ -600,6 +696,9 @@ window.addEventListener("DOMContentLoaded", () => {
                 note.className = 'text-xs text-gray-400 mb-2';
                 note.textContent = 'Camera access granted.';
                 transcriptPane.appendChild(note);
+                setTimeout(() => {
+                    transcriptPane.scrollTop = transcriptPane.scrollHeight;
+                }, 10);
             } catch (e) {
                 console.warn('Could not access webcam on start:', e);
                 statusArea.textContent = 'No camera available';
@@ -630,7 +729,15 @@ window.addEventListener("DOMContentLoaded", () => {
                     aiHtmlInit.className = 'w-full flex justify-start mb-2';
                     aiHtmlInit.innerHTML = `<div class="inline-block bg-blue-50 px-4 py-2 rounded-lg max-w-[80%]">${initData.response}</div>`;
                     transcriptPane.appendChild(aiHtmlInit);
-                    transcriptPane.scrollTop = transcriptPane.scrollHeight;
+                    // Ensure height is fixed and scroll to bottom
+                    enforceFixedHeights();
+                    // Use multiple animation frames to ensure scroll happens after layout
+                    requestAnimationFrame(() => {
+                        requestAnimationFrame(() => {
+                            transcriptPane.scrollTop = transcriptPane.scrollHeight;
+                            console.log('Initial scroll - Position:', transcriptPane.scrollTop, 'Max:', transcriptPane.scrollHeight - transcriptPane.clientHeight);
+                        });
+                    });
                 }
             } catch (e) {
                 console.warn('Could not append initial AI message to transcript:', e);
@@ -654,6 +761,9 @@ window.addEventListener("DOMContentLoaded", () => {
                 recordingNote.className = 'text-xs text-gray-400 mb-2';
                 recordingNote.textContent = 'Recording started.';
                 transcriptPane.appendChild(recordingNote);
+                setTimeout(() => {
+                    transcriptPane.scrollTop = transcriptPane.scrollHeight;
+                }, 10);
             }
 
             // Show stop button
@@ -787,21 +897,52 @@ stopInterviewButton.addEventListener('click', () => {
     box-sizing: border-box;
 }
 
-/* Ensure transcript pane is scrollable - critical for flexbox scrolling */
-/* The transcript container and its parent flex containers need min-height: 0 */
+/* Critical: Ensure all flex containers in the chain respect height constraints */
+/* This prevents content from expanding containers */
+#mainContentArea {
+    flex: 1 1 0% !important;
+    min-height: 0 !important;
+    height: 0 !important; /* Force flex-1 to calculate based on parent available space */
+    overflow: hidden !important;
+    display: flex !important;
+    box-sizing: border-box;
+}
+
 #transcriptContainer {
     min-height: 0 !important;
+    max-height: 100% !important;
+    height: 100% !important;
+    width: 40% !important; /* w-2/5 equivalent */
     display: flex !important;
     flex-direction: column !important;
+    overflow: hidden !important; /* Container doesn't scroll, only transcriptPane does */
+    box-sizing: border-box;
+    flex-shrink: 0 !important; /* Prevent shrinking */
+    /* Ensure child can scroll independently */
+    position: relative;
+}
+
+#videoPanel {
+    min-height: 0 !important;
+    max-height: 100% !important;
+    height: 100% !important;
+    flex: 1 1 0% !important; /* Take remaining space */
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    box-sizing: border-box;
 }
 
 #transcriptPane {
-    flex: 1 1 0% !important;
+    /* JavaScript will set explicit height via enforceFixedHeights() */
+    /* flex: 1 removed - JavaScript sets explicit height instead */
     min-height: 0 !important;
     overflow-y: auto !important;
     overflow-x: hidden !important;
     box-sizing: border-box;
     -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+    position: relative;
+    /* Ensure scrolling works */
 }
 </style>
 {% endblock %}
