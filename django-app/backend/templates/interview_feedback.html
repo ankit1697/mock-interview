@@ -153,6 +153,41 @@
     <!-- Visual Feedback Tab -->
     <div id="visualContent" class="tab-content hidden">
       {% if completed.video_file %}
+        {% if completed.visual_feedback or completed.engagement_score %}
+          <!-- Overall Video Metrics Section (First) -->
+          <div id="modelPredictionsSection" class="mb-6">
+            <h3 class="text-xl font-semibold mb-4 text-gray-900">Overall Video Metrics</h3>
+            <div id="modelPredictionsGrid" class="grid grid-cols-1 md:grid-cols-5 gap-4">
+              <!-- Cards will be populated by JavaScript -->
+            </div>
+          </div>
+
+          <!-- Behavioral Feedback Section (Second) -->
+          {% if completed.visual_feedback %}
+          <div class="mb-6 p-6 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg border border-blue-200 shadow-sm">
+            <h3 class="text-xl font-semibold mb-4 text-blue-900 flex items-center gap-2">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+              </svg>
+              Behavioral Feedback
+            </h3>
+            <div id="visualFeedbackContent" class="text-gray-700 whitespace-pre-line bg-white p-4 rounded border border-blue-100 leading-relaxed">{{ completed.visual_feedback }}</div>
+          </div>
+          {% endif %}
+        {% else %}
+          <!-- Show analysis in progress if video exists but no feedback yet -->
+          <div class="mb-6 p-6 bg-yellow-50 rounded-lg border border-yellow-200">
+            <div class="flex items-center gap-3 mb-2">
+              <svg class="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+              </svg>
+              <p class="text-yellow-800 font-medium">Analysis in Progress</p>
+            </div>
+            <p class="text-sm text-yellow-700">Video analysis is currently being processed. Please refresh this page in a few moments to see the visual feedback.</p>
+          </div>
+        {% endif %}
+        
+        <!-- Video Recording Section (Third) -->
         <div class="mb-6">
           <h3 class="text-lg font-semibold mb-3">Video Recording</h3>
           <video controls class="w-full max-w-4xl rounded-lg shadow-lg" style="max-height: 600px;">
@@ -160,17 +195,6 @@
             Your browser does not support the video tag.
           </video>
         </div>
-        
-        {% if completed.visual_feedback %}
-          <div class="mt-8 p-6 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg border border-blue-200 shadow-sm">
-            <h3 class="text-xl font-semibold mb-4 text-blue-900 flex items-center gap-2">
-              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
-              </svg>
-              Visual Behavior Analysis
-            </h3>
-            <div id="visualFeedbackContent" class="text-gray-700 whitespace-pre-line bg-white p-4 rounded border border-blue-100 leading-relaxed">{{ completed.visual_feedback }}</div>
-          </div>
           
           <!-- Video Snippet Modal -->
           <div id="videoSnippetModal" class="hidden fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4">
@@ -200,17 +224,6 @@
               </div>
             </div>
           </div>
-        {% else %}
-          <div class="mt-8 p-6 bg-yellow-50 rounded-lg border border-yellow-200">
-            <div class="flex items-center gap-3 mb-2">
-              <svg class="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-              </svg>
-              <p class="text-yellow-800 font-medium">Analysis in Progress</p>
-            </div>
-            <p class="text-sm text-yellow-700">Video analysis is currently being processed. Please refresh this page in a few moments to see the visual feedback.</p>
-          </div>
-        {% endif %}
       {% else %}
         <div class="text-center py-12">
           <svg class="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -227,6 +240,74 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <script>
+// Metric range information and descriptions
+window.metricRanges = {
+  'Engagement': {
+    description: 'How attentive, involved, and focused you are during the conversation.',
+    ranges: [
+      { min: 0, max: 5.1, label: 'Poor' },
+      { min: 5.1, max: 5.5, label: 'Average' },
+      { min: 5.5, max: 5.9, label: 'Good' },
+      { min: 5.9, max: Infinity, label: 'Very Good' }
+    ]
+  },
+  'Engaging Tone': {
+    description: 'How dynamic and captivating your voice sounds while speaking.',
+    ranges: [
+      { min: 0, max: 4.2, label: 'Poor' },
+      { min: 4.2, max: 5.0, label: 'Average' },
+      { min: 5.0, max: 5.4, label: 'Good' },
+      { min: 5.4, max: Infinity, label: 'Very Good' }
+    ]
+  },
+  'Excitement': {
+    description: 'How energetic, enthusiastic, or animated your emotion appears.',
+    ranges: [
+      { min: 0, max: 4.3, label: 'Poor' },
+      { min: 4.3, max: 4.9, label: 'Average' },
+      { min: 4.9, max: 5.4, label: 'Good' },
+      { min: 5.4, max: Infinity, label: 'Very Good' }
+    ]
+  },
+  'Friendliness': {
+    description: 'How warm, welcoming, and approachable your behavior seems.',
+    ranges: [
+      { min: 0, max: 5.0, label: 'Poor' },
+      { min: 5.0, max: 5.4, label: 'Average' },
+      { min: 5.4, max: 6.0, label: 'Good' },
+      { min: 6.0, max: Infinity, label: 'Very Good' }
+    ]
+  },
+  'Smile': {
+    description: 'How frequently and naturally you smile.',
+    ranges: [
+      { min: 0, max: 4.6, label: 'Poor' },
+      { min: 4.6, max: 5.3, label: 'Average' },
+      { min: 5.3, max: 5.8, label: 'Good' },
+      { min: 5.8, max: Infinity, label: 'Very Good' }
+    ]
+  }
+};
+
+// Pass video metrics from Django to JavaScript
+window.videoMetrics = [
+  {% if completed.engagement_score is not None %}
+  { name: 'Engagement', value: {{ completed.engagement_score }} },
+  {% endif %}
+  {% if completed.engaging_tone_score is not None %}
+  { name: 'Engaging Tone', value: {{ completed.engaging_tone_score }} },
+  {% endif %}
+  {% if completed.excitement_score is not None %}
+  { name: 'Excitement', value: {{ completed.excitement_score }} },
+  {% endif %}
+  {% if completed.friendliness_score is not None %}
+  { name: 'Friendliness', value: {{ completed.friendliness_score }} },
+  {% endif %}
+  {% if completed.smile_score is not None %}
+  { name: 'Smile', value: {{ completed.smile_score }} }
+  {% endif %}
+];
+
 // Create donut charts for dimension scores
 document.addEventListener('DOMContentLoaded', function() {
   // Plugin to draw text in center of donut chart
@@ -343,8 +424,83 @@ function switchTab(tabName) {
     document.getElementById('visualTab').classList.add('active', 'border-orange-500', 'text-orange-600');
     document.getElementById('visualTab').classList.remove('border-transparent', 'text-gray-500');
     
-    // Process timestamps when visual tab is opened
+    // Populate model prediction cards and process timestamps when visual tab is opened
+    populateModelPredictionsCards();
     processVisualFeedbackTimestamps();
+  }
+}
+
+function populateModelPredictionsCards() {
+  const predictionsGrid = document.getElementById('modelPredictionsGrid');
+  const predictionsSection = document.getElementById('modelPredictionsSection');
+  
+  if (!predictionsGrid || !predictionsSection) return;
+  
+  // Get metric values from the data object set by Django template
+  const metrics = window.videoMetrics || [];
+  const ranges = window.metricRanges || {};
+  
+  if (metrics.length > 0) {
+    predictionsGrid.innerHTML = metrics.map((metric, index) => {
+      const metricData = ranges[metric.name] || {};
+      const metricRanges = metricData.ranges || [];
+      const description = metricData.description || '';
+      
+      // Format tooltip with description and ranges
+      let rangeText = `<strong>${metric.name}:</strong><br>`;
+      if (description) {
+        rangeText += `<span class="text-gray-300">${description}</span><br><br>`;
+      }
+      metricRanges.forEach((range, i) => {
+        if (i === 0) {
+          rangeText += `&lt;${range.max} - ${range.label}<br>`;
+        } else if (i === metricRanges.length - 1) {
+          rangeText += `&gt;${range.min} - ${range.label}`;
+        } else {
+          rangeText += `${range.min} - ${range.max} - ${range.label}<br>`;
+        }
+      });
+      
+      const cardId = `metric-card-${index}`;
+      return `
+        <div class="bg-white p-4 rounded-lg shadow-sm border text-center relative" id="${cardId}">
+          <div class="absolute top-2 right-2">
+            <div class="relative inline-block">
+              <button class="text-gray-400 hover:text-gray-600 focus:outline-none tooltip-trigger" aria-label="Range information" data-tooltip="${cardId}-tooltip">
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"></path>
+                </svg>
+              </button>
+              <div id="${cardId}-tooltip" class="hidden absolute right-0 top-full mt-2 w-64 bg-gray-800 text-white text-xs rounded-lg shadow-lg p-3 z-50 pointer-events-none tooltip-content">
+                ${rangeText}
+              </div>
+            </div>
+          </div>
+          <h4 class="text-sm font-medium text-gray-600 mb-2">${metric.name}</h4>
+          <div class="text-2xl font-bold text-blue-600">${metric.value.toFixed(3)}</div>
+        </div>
+      `;
+    }).join('');
+    
+    // Add hover event listeners for tooltips
+    document.querySelectorAll('.tooltip-trigger').forEach(trigger => {
+      const tooltipId = trigger.getAttribute('data-tooltip');
+      const tooltip = document.getElementById(tooltipId);
+      
+      if (tooltip) {
+        trigger.addEventListener('mouseenter', () => {
+          tooltip.classList.remove('hidden');
+        });
+        
+        trigger.addEventListener('mouseleave', () => {
+          tooltip.classList.add('hidden');
+        });
+      }
+    });
+    
+    predictionsSection.style.display = 'block';
+  } else {
+    predictionsSection.style.display = 'none';
   }
 }
 

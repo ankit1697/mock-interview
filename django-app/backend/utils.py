@@ -153,7 +153,10 @@ def analyze_video_behavior(video_path, duration_seconds=None):
         duration_seconds: Optional known duration in seconds (for validation/logging)
     
     Returns:
-        Formatted feedback text or None if analysis fails.
+        Dictionary with keys:
+        - 'feedback': Formatted feedback text
+        - 'metrics': Dictionary with metric scores (engagement_score, engaging_tone_score, excitement_score, friendliness_score, smile_score)
+        Returns None if analysis fails.
     """
     try:
         # Import analyze_behavior module first to patch extract_audio
@@ -175,7 +178,10 @@ def analyze_video_behavior(video_path, duration_seconds=None):
         from analyze_behavior import (
             summarize_results,
             detect_behavior_violations,
-            format_metric_feedback
+            format_metric_feedback,
+            summarize_results_for_model,
+            score_all_metrics,
+            format_model_predictions
         )
         
         # Log duration if provided
@@ -188,7 +194,10 @@ def analyze_video_behavior(video_path, duration_seconds=None):
         summary = summarize_results(video_path, window_seconds=window_seconds)
         
         if summary.empty:
-            return "No usable video data detected. The video may be too short or unclear."
+            return {
+                'feedback': "No usable video data detected. The video may be too short or unclear.",
+                'metrics': {}
+            }
         
         print(f"Summary generated with {len(summary)} time windows. Columns: {summary.columns.tolist()}")
         
@@ -198,16 +207,70 @@ def analyze_video_behavior(video_path, duration_seconds=None):
         # Format feedback using the new function
         feedback = format_metric_feedback(violations, window_seconds=window_seconds)
         
-        if not feedback:
-            return "No significant behavioral changes detected. Your posture and presentation remained consistent throughout the interview."
+        # Collect all feedback parts
+        feedback_parts = []
         
-        return feedback
+        if feedback:
+            feedback_parts.append(feedback)
+        else:
+            feedback_parts.append("No significant behavioral changes detected. Your posture and presentation remained consistent throughout the interview.")
+        
+        # Get model predictions and extract metrics
+        metrics_dict = {}
+        try:
+            model_summary = summarize_results_for_model(video_path)
+            
+            if not model_summary.empty:
+                models_root = os.path.join(PROJECT_ROOT, "cgpt", "vision_models")
+                
+                if os.path.exists(models_root):
+                    try:
+                        preds_df = score_all_metrics(model_summary, models_root)
+                        
+                        # Extract individual metric scores
+                        if 'engaged_pred' in preds_df.columns:
+                            metrics_dict['engagement_score'] = float(preds_df['engaged_pred'].iloc[0]) if len(preds_df) > 0 else None
+                        if 'engagingtone_pred' in preds_df.columns:
+                            metrics_dict['engaging_tone_score'] = float(preds_df['engagingtone_pred'].iloc[0]) if len(preds_df) > 0 else None
+                        if 'excited_pred' in preds_df.columns:
+                            metrics_dict['excitement_score'] = float(preds_df['excited_pred'].iloc[0]) if len(preds_df) > 0 else None
+                        if 'friendly_pred' in preds_df.columns:
+                            metrics_dict['friendliness_score'] = float(preds_df['friendly_pred'].iloc[0]) if len(preds_df) > 0 else None
+                        if 'smile_pred' in preds_df.columns:
+                            metrics_dict['smile_score'] = float(preds_df['smile_pred'].iloc[0]) if len(preds_df) > 0 else None
+                        
+                        # Don't add model predictions text to feedback anymore - we'll use DB fields
+                    except Exception as e:
+                        print(f"⚠️ Warning: Error running model predictions: {str(e)}")
+                        import traceback
+                        traceback.print_exc()
+                else:
+                    print(f"⚠️ Warning: Models directory not found at '{models_root}'. Skipping model predictions.")
+            else:
+                print("⚠️ Warning: Could not extract features for model predictions.")
+        
+        except Exception as e:
+            print(f"⚠️ Warning: Error extracting features for model predictions: {str(e)}")
+            import traceback
+            traceback.print_exc()
+        
+        feedback_text = "\n".join(feedback_parts)
+        return {
+            'feedback': feedback_text,
+            'metrics': metrics_dict
+        }
         
     except ImportError as e:
         print(f"Error importing analyze_behavior: {e}")
-        return f"Visual analysis unavailable: Required dependencies may not be installed ({str(e)})"
+        return {
+            'feedback': f"Visual analysis unavailable: Required dependencies may not be installed ({str(e)})",
+            'metrics': {}
+        }
     except Exception as e:
         print(f"Error analyzing video behavior: {e}")
         import traceback
         traceback.print_exc()
-        return f"Error analyzing video: {str(e)}"
+        return {
+            'feedback': f"Error analyzing video: {str(e)}",
+            'metrics': {}
+        }

@@ -56,6 +56,12 @@ class CompletedInterview(models.Model):
 	video_file = models.FileField(upload_to='interview_videos/', null=True, blank=True, help_text='Compressed video recording of the interview')
 	video_duration_seconds = models.PositiveIntegerField(null=True, blank=True, help_text='Duration of the video recording in seconds')
 	visual_feedback = models.TextField(null=True, blank=True, help_text='Visual behavior analysis feedback from video')
+	# Model prediction scores (0-1 scale)
+	engagement_score = models.FloatField(null=True, blank=True, help_text='Engagement score from vision model')
+	engaging_tone_score = models.FloatField(null=True, blank=True, help_text='Engaging Tone score from vision model')
+	excitement_score = models.FloatField(null=True, blank=True, help_text='Excitement score from vision model')
+	friendliness_score = models.FloatField(null=True, blank=True, help_text='Friendliness score from vision model')
+	smile_score = models.FloatField(null=True, blank=True, help_text='Smile score from vision model')
 	completed_at = models.DateTimeField(auto_now_add=True)
 
 	def __str__(self):

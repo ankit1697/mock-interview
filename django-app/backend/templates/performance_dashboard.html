@@ -121,6 +121,24 @@
     </div>
   </div>
 
+  <!-- Behavioral Averages -->
+  <div class="bg-white shadow-sm border rounded-lg p-6 mb-8">
+    <h3 class="text-lg font-semibold mb-4">Average Behavioral Scores</h3>
+    <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+      {% for item in behavioral_averages_list %}
+      <div class="text-center">
+        {% if item.score is not None %}
+        <div class="text-2xl font-bold text-blue-600">{{ item.score }}</div>
+        <div class="text-sm text-gray-500">{{ item.name }}</div>
+        {% else %}
+        <div class="text-2xl font-bold text-gray-400">N/A</div>
+        <div class="text-sm text-gray-500">{{ item.name }}</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
   <!-- Recent Interviews Table -->
   <div class="bg-white shadow-sm border rounded-lg p-6">
     <h3 class="text-lg font-semibold mb-4">Recent Interview Performance</h3>
