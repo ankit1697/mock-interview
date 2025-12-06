@@ -124,8 +124,56 @@ async function sendAudioToServer(audioBlob) {
             statusArea.textContent = '';
         }
 
-        // Handle interview completion
+        // Handle interview ended early (e.g., due to off-topic behavior)
+        if (data.interview_ended) {
+            console.log('Interview ended early - stopping interview loop');
+            stopRequested = true;  // Stop the recording loop - this will break the while loop
+            
+            // Stop media recording if active
+            try {
+                if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                    mediaRecorder.stop();
+                }
+                if (videoRecorder && videoRecorder.state !== 'inactive') {
+                    videoRecorder.stop();
+                }
+            } catch (e) {
+                console.warn('Error stopping recorders:', e);
+            }
+            
+            // Backend already created the completed_interview, so use the completed_id from response
+            if (data.completed_id) {
+                // Upload video if available
+                try {
+                    await stopVideoRecordingAndUpload(data.completed_id);
+                } catch (err) {
+                    console.error('Video upload error:', err);
+                }
+                
+                // Redirect to feedback page
+                const endHtml = document.createElement('div');
+                endHtml.className = 'text-orange-600 mt-4 font-semibold';
+                endHtml.textContent = 'Interview ended. Redirecting to feedback...';
+                transcriptPane.appendChild(endHtml);
+                transcriptPane.scrollTop = transcriptPane.scrollHeight;
+                
+                setTimeout(() => {
+                    window.location.href = `/interview/feedback/${data.completed_id}/`;
+                }, 2000);
+            } else {
+                // Fallback: just show message if no completed_id
+                const endHtml = document.createElement('div');
+                endHtml.className = 'text-orange-600 mt-4 font-semibold';
+                endHtml.textContent = 'Interview ended.';
+                transcriptPane.appendChild(endHtml);
+                transcriptPane.scrollTop = transcriptPane.scrollHeight;
+            }
+            return;  // Exit early to prevent further processing
+        }
+
+        // Handle interview completion (normal end)
         if (data.completed_id) {
+            stopRequested = true;  // Stop the recording loop
             const doneHtml = document.createElement('div');
             doneHtml.className = 'text-green-600 mt-4';
             doneHtml.textContent = 'Uploading video...';
@@ -146,6 +194,7 @@ async function sendAudioToServer(audioBlob) {
                 window.location.href = `/interview/feedback/${data.completed_id}/`;
                 }, 1000);
             }
+            return;  // Exit early to prevent further processing
         }
 
     } catch (error) {
@@ -563,7 +612,7 @@ window.addEventListener("DOMContentLoaded", () => {
                 videoPanel.appendChild(err);
             }
 
-            // Now request initial greeting from server
+            // Now request initial greeting from server (this triggers question pool building)
             const initResp = await fetch("", {
         method: "POST",
         headers: {

@@ -8,19 +8,22 @@ class Resume(models.Model):
 	uploaded_at = models.DateTimeField(auto_now_add=True)
 	is_preferred = models.BooleanField(default=False)
 
-	# Parsed Fields
-	name = models.CharField(max_length=255, null=True, blank=True)
-	email = models.EmailField(null=True, blank=True)
-	phone = models.CharField(max_length=50, null=True, blank=True)
-	location = models.CharField(max_length=255, null=True, blank=True)
-	summary = models.TextField(null=True, blank=True)
+	# Parsed Fields (matching resume_parser.py output)
+	name = models.CharField(max_length=255, null=True, blank=True, help_text="Candidate name from resume")
+	summary = models.TextField(null=True, blank=True, help_text="Professional Summary")
+	professional_projects = models.JSONField(null=True, blank=True, help_text="Professional Projects")
+	skills = models.JSONField(null=True, blank=True, help_text="Skills")
+	academic_projects = models.JSONField(null=True, blank=True, help_text="Academic Projects")
+	work_experience = models.JSONField(null=True, blank=True, help_text="Work Experience")
+	total_experience = models.FloatField(default=0, help_text="Total Experience (in years)")
+	core_skills = models.JSONField(null=True, blank=True, help_text="List of Core skills (e.g., 'XGBoost', 'Forecasting', 'Optimization')")
+	project_domains = models.JSONField(null=True, blank=True, help_text="List of Project domains (e.g., 'Donor forecasting model', 'Route optimization')")
+	work_context = models.JSONField(null=True, blank=True, help_text="List of Work context (e.g., 'BioLife Plasma Services', 'Healthcare analytics')")
+	
+	# Legacy fields (kept for backward compatibility, may be populated from other sources)
 	education = models.JSONField(null=True, blank=True)
-	experience = models.JSONField(null=True, blank=True)
-	skills = models.JSONField(null=True, blank=True)
 	certifications = models.JSONField(null=True, blank=True)
-	projects = models.JSONField(null=True, blank=True)
 	domain_expertise = models.JSONField(null=True, blank=True)
-	years_of_experience = models.FloatField(default=0)
 
 	def __str__(self):
 		return f"{self.user.username} - {self.file.name}"

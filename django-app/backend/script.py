@@ -1,544 +1,473 @@
+"""
+Interview session management using QSE (Question Selection Engine) and resume_parser.
+All resume parsing is handled by resume_parser.py, and all question generation/orchestration
+is handled by question_selection_engine.py.
+"""
+
 import os
 import json
-import time
-import openai
+import sys
+from pathlib import Path
+from typing import Dict, Any, List, Optional
 from openai import OpenAI
 from dotenv import load_dotenv, find_dotenv
-from PyPDF2 import PdfReader
-import requests
 from .evaluation_engine import (
     evaluate_interview_json,
     format_answer_evaluation_feedback,
     format_interview_summary
 )
 
+# Load environment variables first
 _dotenv_path = find_dotenv()
 load_dotenv(_dotenv_path, override=True)
 
 # Normalize and validate OpenAI key
 _openai_key = os.getenv("OPENAI_API_KEY")
-openai.api_key = _openai_key
 openai_client = OpenAI(api_key=_openai_key)
 
 PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY")
 
+# Add cgpt directory to path for QSE and resume_parser imports
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+CGPT_PATH = PROJECT_ROOT / 'cgpt'
+if str(CGPT_PATH) not in sys.path:
+    sys.path.insert(0, str(CGPT_PATH))
 
-def read_file(file_path):
-    """Generic function to read file content based on extension"""
-    try:
-        # Determine file type based on extension
-        file_extension = os.path.splitext(file_path)[1].lower()
+# Import resume_parser (if available)
+RESUME_PARSER_AVAILABLE = False
+try:
+    from resume_parser import parse_resume_from_file
+    RESUME_PARSER_AVAILABLE = True
+    # Patch resume_parser's OpenAI client
+    import resume_parser as rp_module
+    if hasattr(rp_module, 'client'):
+        rp_module.client = openai_client
+except ImportError as e:
+    print(f"Warning: resume_parser not available: {e}")
+    RESUME_PARSER_AVAILABLE = False
 
-        # Read the file content based on type
-        if file_extension == '.pdf':
-            return read_pdf(file_path)
-        elif file_extension == '.docx':
-            return read_docx(file_path)
-        elif file_extension == '.txt':
-            with open(file_path, 'r', encoding='utf-8') as file:
-                return file.read()
-        elif file_extension in ['.csv', '.xlsx', '.xls']:
-            # For tabular formats, convert to text representation
-            return read_tabular(file_path)
-        else:
-            # Try to read as text for unknown file types
-            with open(file_path, 'r', encoding='utf-8') as file:
-                return file.read()
-    except Exception as e:
-        print(f"Error reading file {file_path}: {str(e)}")
-        return f"Could not read file {file_path}"
-
-
-def read_pdf(pdf_path):
-    """Extract text from PDF file"""
-    try:
-        reader = PdfReader(pdf_path)
-        text = ""
-        for page in reader.pages:
-            text += page.extract_text() + "\n"
-        return text
-    except Exception as e:
-        print(f"Error reading PDF: {str(e)}")
-        return ""
-
-
-def read_docx(docx_path):
-    """Extract text from DOCX file"""
-    try:
-        doc = docx.Document(docx_path)
-        text = []
-        for paragraph in doc.paragraphs:
-            text.append(paragraph.text)
-        return "\n".join(text)
-    except Exception as e:
-        print(f"Error reading DOCX: {str(e)}")
-        return ""
-
-
-def parse_resume_with_ai(resume_text):
-    """Use AI to extract structured information from resume text"""
-    try:
-        client = openai_client
-
-        prompt = f"""
-        Extract structured information from the following resume:
-
-        {resume_text}
-
-        Return the information in this JSON format:
-        {{
-            "contact_info": {{
-                "name": "",
-                "email": "",
-                "phone": "",
-                "location": ""
-            }},
-            "summary": "",
-            "education": [
-                {{
-                    "degree": "",
-                    "institution": "",
-                    "dates": "",
-                    "gpa": "",
-                    "details": []
-                }}
-            ],
-            "experience": [
-                {{
-                    "title": "",
-                    "company": "",
-                    "dates": "",
-                    "location": "",
-                    "responsibilities": []
-                }}
-            ],
-            "skills": {{
-                "technical": [],
-                "soft": [],
-                "languages": [],
-                "tools": []
-            }},
-            "projects": [
-                {{
-                    "name": "",
-                    "description": "",
-                    "technologies": [],
-                    "outcomes": []
-                }}
-            ],
-            "certifications": [],
-            "years_of_experience": 0,
-            "domain_expertise": []
-        }}
-
-        If a field can't be determined from the resume, use null or an empty array as appropriate.
-        For "years_of_experience", determine the total years of professional experience based on work history.
-        For "domain_expertise", identify industry domains where the candidate has experience.
-        """
-
-        messages = [
-            {"role": "system", "content": "You are an expert resume parser. Extract structured information from resumes accurately."},
-            {"role": "user", "content": prompt}
-        ]
-
-        start = time.time()
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=messages,
-            response_format={"type": "json_object"}
-        )
-        end = time.time()
-
-        structured_resume = json.loads(response.choices[0].message.content)
-        print(f"Resume parsed in {round(end - start, 2)} seconds")
-
-        return structured_resume
-
-    except Exception as e:
-        print(f"Error parsing resume with AI: {str(e)}")
-        return {
-            "contact_info": {},
-            "education": [],
-            "experience": [],
-            "skills": {},
-            "years_of_experience": 0,
-            "domain_expertise": []
-        }
-
-def extract_resume_structure(resume_path):
-    """Extract structured information from a resume file"""
-    try:
-        resume_text = read_file(resume_path)
-        print(f"Successfully read resume from {resume_path}")
-
-        # Use OpenAI to extract structured information
-        structured_resume = parse_resume_with_ai(resume_text)
-        return structured_resume
-
-    except Exception as e:
-        print(f"Error extracting resume structure: {str(e)}")
-        # Return a minimal structure if parsing fails
-        return {
-            "contact_info": {},
-            "education": [],
-            "experience": [],
-            "skills": [],
-            "full_text": "Could not parse resume"
-        }
-
-
-def extract_job_description_structure_from_text(jd_text):
-        try:
-            client = openai_client
-
-            prompt = f"""
-            Extract structured information from the following job description:
-
-            {jd_text}
-
-            Return the information in this JSON format:
-            {{
-                "role": "",
-                "company": "",
-                "location": "",
-                "skills_required": [],
-                "summary": "",
-                "responsibilities": [],
-                "qualifications": [],
-                "years_of_experience_required": 0
-            }}
-
-            If any information is missing, leave it as null or an empty list.
-            """
-
-            messages = [
-                {"role": "system", "content": "You are an expert in parsing job descriptions accurately."},
-                {"role": "user", "content": prompt}
-            ]
-
-            response = client.chat.completions.create(
-                model="gpt-4o",
-                messages=messages,
-                response_format={"type": "json_object"}
-            )
-
-            structured_jd = json.loads(response.choices[0].message.content)
-            return structured_jd
-
-        except Exception as e:
-            print(f"Error parsing JD from text: {e}")
-            return {
-                "role": None,
-                "company": None,
-                "location": None,
-                "skills_required": [],
-                "summary": "",
-                "responsibilities": [],
-                "qualifications": [],
-                "years_of_experience_required": 0
-            }
-
-
-def create_personal_profile(structured_resume, structured_jd):
-    """Create a mini profile from parsed resume and job description."""
-    try:
-        profile = {
-            "name": None,
-            "role": None,
-            "company": None
-        }
-
-        if structured_resume:
-            profile["name"] = structured_resume.get("contact_info", {}).get("name")
-
-        if structured_jd:
-            profile["role"] = structured_jd.get("role")
-            profile["company"] = structured_jd.get("company")
-
-        return profile
-    except Exception as e:
-        print(f"Error creating personal profile: {e}")
-        return {
-            "name": None,
-            "role": None,
-            "company": None
-        }
-
-
-def get_recent_interview_questions(company_name):
-    url = "https://api.perplexity.ai/chat/completions"
+# Import QSE functions (patch OpenAI client to use our key)
+QSE_AVAILABLE = False
+try:
+    import question_selection_engine as qse_module
+    # Patch the QSE's OpenAI client to use our key BEFORE importing functions
+    if hasattr(qse_module, 'client'):
+        qse_module.client = openai_client
+    else:
+        qse_module.client = openai_client
     
-    headers = {
-        "Authorization": f"Bearer {PERPLEXITY_API_KEY}",
-        "Content-Type": "application/json"
-    }
+    # Set small talk turns to allow conversational flow (3 turns = 3 conversational exchanges)
+    if hasattr(qse_module, 'MAX_SMALLTALK_TURNS'):
+        qse_module.MAX_SMALLTALK_TURNS = 3
     
-    prompt = f"""You are a helpful AI assistant that conducts mock interviews.
-Rules:
-1. Provide only the final answer. It is important that you do not include any explanation on the steps below.
-2. Do not show the intermediate steps information.
-Steps:
-1. Decide if the answer should be a brief sentence or a list of suggestions.
-2. If it is a list of suggestions, first, write a brief and natural introduction based on the original query.
-3. Followed by a list of suggestions, each suggestion should be split by two newlines.
-Question : Give me top 5 recent non coding technical questions for data science interviews at {company_name}. If the company is too small and you really dont find anything, give a list of generic questions"""
-    
-    data = {
-        "model": "llama-3.1-sonar-large-128k-online",
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.1
-    }
-    
-    try:
-        response = requests.post(url, headers=headers, json=data)
-        response.raise_for_status()
-        result = response.json()
-        return result['choices'][0]['message']['content'].strip()
-    except Exception as e:
-        print(f"Error getting recent interview questions: {e}")
-        return f"Unable to fetch recent questions for {company_name}. Proceeding with standard interview."
-
-
-
-def generate_initial_question(structured_resume, structured_jd, company=""):
-    """Generate the initial interview question based on structured resume and job description"""
-    # Prepare resume and job description in a structured format
-
-    recent_questions = get_recent_interview_questions(company)
-
-    resume_summary = {
-        "name": structured_resume.get("contact_info", {}).get("name", ""),
-        "experience": [
-            {
-                "title": exp.get("title", ""),
-                "company": exp.get("company", ""),
-                "responsibilities": exp.get("responsibilities", [])[:3]
-            } for exp in (structured_resume.get("experience") or [])[:3]
-        ],
-        "education": [
-            {
-                "degree": edu.get("degree", ""),
-                "institution": edu.get("institution", "")
-            } for edu in (structured_resume.get("education") or [])
-        ],
-        "skills": structured_resume.get("skills") or {},
-        "projects": [proj.get("name", "") for proj in (structured_resume.get("projects") or [])][:3]
-    }
-
-    jd_summary = {
-        "title": structured_jd.get("title", ""),
-        "company": company,
-        "responsibilities": (structured_jd.get("responsibilities") or [])[:5],  # Limit to 5 key responsibilities
-        "required_skills": (structured_jd.get("requirements") or {}).get("required_skills", []),
-        "industry": structured_jd.get("industry", "")
-    }
-
-    # Convert to JSON strings
-    resume_json = json.dumps(resume_summary, indent=2)
-    jd_json = json.dumps(jd_summary, indent=2)
-
-    # Prepare messages
-    messages = [
-        {"role": "system", "content": "You are an expert AI interviewer for data science roles."},
-        {"role": "user", "content": f"""
-Given the structured resume and job description below, generate a thoughtful and role-specific technical interview question.
-
-STRUCTURED RESUME:
-{resume_json}
-
-STRUCTURED JOB DESCRIPTION:
-{jd_json}
-
-RECENT INTERVIEW QUESTIONS FROM THE COMPANY:
-{recent_questions}
-
-Guidelines for your question:
-1. You can use the list of company-wise question above or the candidate's background (only if relevant to the position) and the job requirements.
-2. Focus on technical knowledge and practical application
-3. Target skills or experiences that appear most relevant for this role
-4. Keep the question under 30 words and end with a question mark
-5. Make it conversational but substantive
-6. Ask only one question at a time
-"""}
-    ]
-
-    print(recent_questions)
-
-    # Call OpenAI API
-    client = openai_client
-
-    start = time.time()
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=messages
+    # Now import the functions (they'll use the patched client)
+    from question_selection_engine import (
+        build_scored_question_pool,
+        start_smalltalk,
+        continue_smalltalk,
+        get_first_interview_question,
+        classify_answer_behavior,
+        clarify_question,
+        needs_followup,
+        generate_followup_question,
+        get_next_diverse_question,
+        normalize_question,
+        transition_phrase,
     )
-    end = time.time()
+    QSE_AVAILABLE = True
+    print("[script.py] ✅ QSE module loaded successfully")
+except ImportError as e:
+    print(f"Warning: Could not import QSE functions: {e}")
+    import traceback
+    traceback.print_exc()
+    QSE_AVAILABLE = False
+    # Define fallback functions
+    def build_scored_question_pool(*args, **kwargs):
+        return []
+    def start_smalltalk(*args, **kwargs):
+        return ("Hi! Let's get started.", [], 1)
+    def continue_smalltalk(*args, **kwargs):
+        return ("Thanks! Let's begin the interview.", [], 1, True, False, 0)
+    def get_first_interview_question(*args, **kwargs):
+        return "Tell me about yourself and your experience."
+    def classify_answer_behavior(*args, **kwargs):
+        return "on_topic"
+    def clarify_question(question):
+        return question
+    def needs_followup(*args, **kwargs):
+        return False
+    def generate_followup_question(*args, **kwargs):
+        return ""
+    def get_next_diverse_question(*args, **kwargs):
+        return None
+    def normalize_question(q):
+        return q if isinstance(q, str) else (q.get("question", "") if isinstance(q, dict) else str(q))
+    def transition_phrase(context="next_topic"):
+        if context == "next_topic":
+            return "That's alright! Let's move on to something else."
+        return "Alright, let's continue."
 
-    initial_question = response.choices[0].message.content
-    print(f"\nInitial Question:\n{initial_question}")
-    print(f"Took {round(end - start, 2)} seconds\n")
 
-    return initial_question, messages
-
-
-def generate_dynamic_question(messages, user_response, personal_profile=None, interview_type="general"):
-    """Generate a dynamic follow-up question based on the user's response and interview type"""
-    # Add the user's response to the conversation
-    messages.append({"role": "user", "content": user_response})
-
-    # Fall back to OpenAI directly
-    print("Generating dynamic follow-up question")
-
-    client = OpenAI()
-
-    # Create a new system message with profile context if available
-    profile_context = ""
-    if personal_profile:
-        profile_context = f"""
-        Candidate Profile:
-        - Name: {personal_profile.get('name', 'Candidate')}
-        - Role applying for: {personal_profile.get('role', 'Data Science Role')}
-        - Experience level: {personal_profile.get('experience', 'Unknown')} years
-        - Technical skills: {', '.join(personal_profile.get('skills', {}).get('technical', [])[:5])}
-        - Background: {', '.join(personal_profile.get('domain_expertise', []))}
-        """
-
-    # Base instruction for all interview types
-    base_instruction = """
-        Generate a thoughtful follow-up question based on the candidate's response.
-        The question can:
-        1. Be no longer than 30 words
-        2. End with a question mark
-        3. Be conversational but technically substantive
-        4. Dig deeper into a specific aspect mentioned by the candidate, but not necessarily!
-
+def convert_resume_to_qse_format(resume_obj) -> Dict[str, Any]:
     """
-
-    # Add technical interview specific instruction if needed
-    if interview_type.lower() == "technical":
-        base_instruction += """
-        5. Ask precise data science technical questions that have a specific answer that can be evaluated (ex: explain a concept...)
-        6. Don't hesitate to ask questions that are completely unrelated with the previous conversation (you can ask like boosting vs bagging or any other common data science question with a fixed answer)
-        7. Ask no more than 1 question which is not a data science classic interview question that could be asked regardless of the background
-        """
-
-    system_message = {
-        "role": "system",
-        "content": f"""
-            You are an expert technical interviewer for data science roles.
-            {profile_context}
-            {base_instruction}
-        """
+    Convert Django Resume model format to QSE expected format.
+    First tries to use resume_parser if file is available, otherwise converts from DB fields.
+    QSE expects: Name, Professional Summary, List of Core skills, Skills, 
+    List of Project domains, Academic Projects, List of Work context
+    """
+    # Try to use resume_parser if available and file exists
+    if RESUME_PARSER_AVAILABLE and hasattr(resume_obj, 'file') and resume_obj.file:
+        try:
+            file_path = resume_obj.file.path
+            if os.path.exists(file_path):
+                print(f"[convert_resume_to_qse_format] Using resume_parser on file: {file_path}")
+                parsed = parse_resume_from_file(file_path)
+                # Ensure all expected keys exist with defaults (using new model field names)
+                parsed.setdefault("Name", resume_obj.name or "")
+                parsed.setdefault("Professional Summary", resume_obj.summary or "")
+                parsed.setdefault("List of Core skills", resume_obj.core_skills or parsed.get("Skills", []))
+                parsed.setdefault("Skills", parsed.get("List of Core skills", []))
+                parsed.setdefault("List of Project domains", resume_obj.project_domains or [])
+                parsed.setdefault("Academic Projects", resume_obj.academic_projects or parsed.get("Academic Projects", []))
+                parsed.setdefault("List of Work context", resume_obj.work_context or [])
+                parsed.setdefault("Education", resume_obj.education or [])
+                parsed.setdefault("Work Experience", resume_obj.work_experience or [])
+                parsed.setdefault("Professional Projects", resume_obj.professional_projects or [])
+                parsed.setdefault("Certifications", resume_obj.certifications or [])
+                parsed.setdefault("Total Experience", resume_obj.total_experience or 0)
+                
+                # Ensure Skills is a list if it's a dict
+                if isinstance(parsed.get("Skills"), dict):
+                    tech_skills = parsed["Skills"].get("technical", [])
+                    parsed["Skills"] = tech_skills
+                    if not parsed.get("List of Core skills"):
+                        parsed["List of Core skills"] = tech_skills[:10]
+                
+                print(f"[convert_resume_to_qse_format] Parsed resume keys: {list(parsed.keys())}")
+                print(f"[convert_resume_to_qse_format] Core skills count: {len(parsed.get('List of Core skills', []))}")
+                return parsed
+        except Exception as e:
+            print(f"[convert_resume_to_qse_format] Error using resume_parser, falling back to converter: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    # Fallback: Convert from Django model fields (using new field names)
+    # Extract skills
+    skills_data = resume_obj.skills or {}
+    technical_skills = skills_data.get("technical", []) if isinstance(skills_data, dict) else []
+    all_skills = technical_skills if technical_skills else (skills_data if isinstance(skills_data, list) else [])
+    # Prefer core_skills field if available, otherwise use extracted skills
+    if resume_obj.core_skills:
+        core_skills_list = resume_obj.core_skills if isinstance(resume_obj.core_skills, list) else []
+        all_skills = core_skills_list if core_skills_list else all_skills
+    
+    # Extract projects (use new professional_projects field)
+    projects_list = resume_obj.professional_projects or []
+    project_domains = resume_obj.project_domains or []
+    project_descriptions = []
+    if isinstance(projects_list, list):
+        for proj in projects_list:
+            if isinstance(proj, dict):
+                project_descriptions.append(proj.get("description", ""))
+                if not project_domains:
+                    project_domains.append(proj.get("name", ""))
+    
+    # Extract experience/work context (use new work_experience and work_context fields)
+    experience_list = resume_obj.work_experience or []
+    work_context = resume_obj.work_context or []
+    if not work_context and isinstance(experience_list, list):
+        for exp in experience_list:
+            if isinstance(exp, dict):
+                work_context.append(f"{exp.get('title', '')} at {exp.get('company', '')}")
+    
+    # Build QSE format
+    qse_resume = {
+        "Name": resume_obj.name or "",
+        "Professional Summary": resume_obj.summary or "",
+        "List of Core skills": all_skills[:10] if isinstance(all_skills, list) else [],  # Top 10 skills
+        "Skills": all_skills if isinstance(all_skills, list) else [],  # All skills
+        "List of Project domains": project_domains[:5] if isinstance(project_domains, list) else [],  # Top 5 project names
+        "Academic Projects": resume_obj.academic_projects or [],  # Academic Projects from model
+        "List of Work context": work_context if isinstance(work_context, list) else [],  # Work context from model
+        "Education": resume_obj.education or [],
+        "Work Experience": experience_list if isinstance(experience_list, list) else [],
+        "Professional Projects": projects_list if isinstance(projects_list, list) else [],
+        "Certifications": resume_obj.certifications or [],
+        "Total Experience": resume_obj.total_experience or 0,
     }
-
-    # Create a new messages array with the system message first
-    formatted_messages = [system_message] + messages
-
-    print(base_instruction)
-
-    start = time.time()
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=formatted_messages,
-        temperature=0.2
-    )
-    end = time.time()
-
-    follow_up_question = response.choices[0].message.content
-    print(f"\nDynamic Follow-Up Question: {follow_up_question}")
-    print(f"Took {round(end - start, 2)} seconds\n")
-
-    return follow_up_question
+    
+    return qse_resume
 
 
 class InterviewSession:
-    def __init__(self, resume_obj, job_description_text, company=None):
+    """
+    Interview session using QSE (Question Selection Engine) for question generation
+    and orchestration. All resume parsing is done via resume_parser.py.
+    """
+    def __init__(self, resume_obj, job_description_text, company=None, role=None, industry=None):
         self.resume_obj = resume_obj  # Save the Resume object
         self.job_description_text = job_description_text or "N/A"
         self.company = company or "N/A"
+        self.role = role or "Data Scientist"
+        self.industry = industry or "Technology"
 
-        self.structured_resume = {
-            "contact_info": {
-                "name": resume_obj.name,
-                "email": resume_obj.email,
-                "phone": resume_obj.phone,
-                "location": resume_obj.location
-            },
-            "summary": resume_obj.summary,
-            "education": resume_obj.education,
-            "experience": resume_obj.experience,
-            "skills": resume_obj.skills,
-            "projects": resume_obj.projects,
-            "certifications": resume_obj.certifications,
-            "domain_expertise": resume_obj.domain_expertise,
-            "years_of_experience": resume_obj.years_of_experience
-        }
+        # Convert resume to QSE format using resume_parser if available
+        self.qse_parsed_resume = convert_resume_to_qse_format(resume_obj)
+        self.candidate_name = self.qse_parsed_resume.get("Name") or resume_obj.name or "Candidate"
+        
+        # Build question pool using QSE (this happens during initialization)
+        if QSE_AVAILABLE:
+            print(f"[InterviewSession] Building question pool for {self.candidate_name}...")
+            print(f"[InterviewSession] Resume keys: {list(self.qse_parsed_resume.keys())}")
+            print(f"[InterviewSession] Company: {self.company}, JD length: {len(self.job_description_text)}")
+            try:
+                # Get Pinecone index name from environment or use default
+                pinecone_index_name = os.getenv("PINECONE_INDEX_NAME", "ds")
+                print(f"[InterviewSession] Using Pinecone index: {pinecone_index_name}")
+                
+                self.scored_question_pool = build_scored_question_pool(
+                    parsed_resume=self.qse_parsed_resume,
+                    company_name=self.company,
+                    job_description=self.job_description_text,
+                    max_questions=20,
+                    pinecone_index_name=pinecone_index_name,
+                    n_perplexity_questions=10,
+                )
+                print(f"[InterviewSession] ✅ Generated {len(self.scored_question_pool)} scored questions")
+                
+                # Count questions by source for debugging
+                source_counts = {}
+                for q in self.scored_question_pool:
+                    source = q.get("source", "unknown")
+                    source_counts[source] = source_counts.get(source, 0) + 1
+                print(f"[InterviewSession] Question sources: {source_counts}")
+                if self.scored_question_pool:
+                    print(f"[InterviewSession] Sample question: {self.scored_question_pool[0].get('question', 'N/A')[:100]}")
+                else:
+                    print("[InterviewSession] ⚠️ Warning: Question pool is empty!")
+            except Exception as e:
+                print(f"[InterviewSession] ❌ Error building question pool: {e}")
+                import traceback
+                traceback.print_exc()
+                self.scored_question_pool = []
+        else:
+            print("[InterviewSession] ⚠️ QSE not available, using empty question pool")
+            self.scored_question_pool = []
 
-        self.structured_jd = extract_job_description_structure_from_text(self.job_description_text)
-        self.personal_profile = create_personal_profile(self.structured_resume, self.structured_jd)
-
-        self.interview_data = []
+        # Orchestrator state
+        self.interview_data = []  # List of {"question": str, "answer": str, "evaluation": str}
+        self.smalltalk_history = []
+        self.smalltalk_turn_count = 0
+        self.smalltalk_completed = False
+        self.off_topic_count = 0  # Off-topic count for small talk
+        self.smalltalk_user_replies = 0  # Track number of user replies in small talk
+        self.initial_greeting_sent = False  # Track if the initial greeting has been sent
+        
+        # Question state
+        self.asked_questions = set()  # Track asked question texts
+        self.current_question = None
         self.current_question_idx = 0
         self.follow_up_count = 0
-        self.total_questions_asked = 0
-        self.messages = []
-        self.current_question = None
-        self.full_evaluation = None  # Store complete evaluation results
-
-
+        self.max_followups_per_question = 3
+        self.total_main_questions_asked = 0
+        self.max_main_questions = 1
+        
+        # Off-topic tracking for interview phase (separate from small talk)
+        self.off_topic_strikes = 0  # Track off-topic/injection strikes during interview
+        
+        # Final evaluation
+        self.full_evaluation = None
 
     def start_interview(self):
-        greeting = f"Hi {self.personal_profile.get('name', 'there')}, nice to meet you! Let's get started with your interview for the {self.personal_profile.get('role', 'data science')} role at {self.company}"
-        initial_question, self.messages = generate_initial_question(self.structured_resume, self.structured_jd, self.company)
-        self.current_question = initial_question
-        self.interview_data.append({"question": initial_question, "answer": None, "evaluation": None})
-        self.total_questions_asked += 1
-        return f"{greeting}\n\n{initial_question}"
+        """Start the interview with small talk"""
+        if self.initial_greeting_sent:
+            print(f"[start_interview] ⚠️ WARNING: start_interview called but greeting already sent!")
+            return "Let's continue with the interview."
+        
+        print(f"[start_interview] QSE_AVAILABLE: {QSE_AVAILABLE}, Question pool size: {len(self.scored_question_pool) if hasattr(self, 'scored_question_pool') else 0}")
+        
+        if not QSE_AVAILABLE:
+            # Fallback to old method
+            greeting = f"Hi {self.candidate_name}, nice to meet you! Let's get started with your interview for the {self.role} role at {self.company}"
+            print(f"[start_interview] Using fallback greeting: {greeting}")
+            self.initial_greeting_sent = True
+            return greeting
+        
+        # Start small talk using orchestrator
+        print(f"[start_interview] Starting small talk for {self.candidate_name}, role: {self.role}, company: {self.company}")
+        try:
+            opener, history, turn_count = start_smalltalk(self.candidate_name, self.role, self.company)
+            self.smalltalk_history = history
+            self.smalltalk_turn_count = turn_count
+            self.initial_greeting_sent = True
+            print(f"[start_interview] Small talk started. Opener: {opener[:100]}...")
+            return opener
+        except Exception as e:
+            print(f"[start_interview] Error in start_smalltalk: {e}")
+            import traceback
+            traceback.print_exc()
+            # Fallback
+            self.initial_greeting_sent = True
+            return f"Hi {self.candidate_name}, nice to meet you! Let's get started with your interview for the {self.role} role at {self.company}"
 
-    def is_clarification_request(self, user_response):
-        clarification_prompt = f"""
-        Determine if the candidate is asking for clarification or rephrasing of the question instead of providing an actual answer. Respond only 'yes' or 'no'.
+    def process_smalltalk_reply(self, user_reply: str):
+        """Process user reply during small talk phase - allows up to MAX_SMALLTALK_TURNS (3) conversational turns"""
+        self.smalltalk_user_replies += 1
+        print(f"[process_smalltalk_reply] Processing reply #{self.smalltalk_user_replies}, QSE_AVAILABLE: {QSE_AVAILABLE}, smalltalk_completed: {self.smalltalk_completed}, turn_count: {self.smalltalk_turn_count}")
+        print(f"[process_smalltalk_reply] History length: {len(self.smalltalk_history)}, History: {self.smalltalk_history}")
+        
+        if not QSE_AVAILABLE:
+            print("[process_smalltalk_reply] QSE not available, transitioning directly")
+            self.smalltalk_completed = True
+            first_q = self._get_first_interview_question()
+            return f"Thanks! Let's get started with the interview.\n\n{first_q}", False, False
+        
+        # Use continue_smalltalk to handle full conversational flow (up to MAX_SMALLTALK_TURNS)
+        try:
+            print(f"[process_smalltalk_reply] Calling continue_smalltalk with history length: {len(self.smalltalk_history)}, turn_count: {self.smalltalk_turn_count}")
+            
+            # Check if history is empty or malformed
+            if not self.smalltalk_history or len(self.smalltalk_history) == 0:
+                print(f"[process_smalltalk_reply] ⚠️ WARNING: History is empty! Transitioning directly.")
+                self.smalltalk_completed = True
+                first_q = self._get_first_interview_question()
+                return f"Thanks! Let's get started with the interview.\n\n{first_q}", False, False
+            
+            ai_msg, updated_history, turn_count, stop_smalltalk, terminate_all, off_topic_count = (
+                continue_smalltalk(self.smalltalk_history, user_reply, self.smalltalk_turn_count, self.off_topic_count)
+            )
+            
+            self.smalltalk_history = updated_history
+            self.smalltalk_turn_count = turn_count
+            self.off_topic_count = off_topic_count
+            
+            print(f"[process_smalltalk_reply] Result - stop_smalltalk: {stop_smalltalk}, terminate_all: {terminate_all}, turn_count: {turn_count}")
+            print(f"[process_smalltalk_reply] AI message preview: {ai_msg[:100]}...")
+            
+            if terminate_all:
+                return "It seems we're not staying on track, so I'll end the interview here. Thank you for your time.", True, True
+            
+            if stop_smalltalk:
+                self.smalltalk_completed = True
+                print("[process_smalltalk_reply] Small talk completed, getting first interview question...")
+                first_q = self._get_first_interview_question()
+                response = f"{ai_msg}\n\n{first_q}"
+                print(f"[process_smalltalk_reply] ✅ Transition response: {response[:150]}...")
+                return response, False, False
+            
+            # Continue small talk - return AI's conversational response
+            return ai_msg, False, False
+        except Exception as e:
+            print(f"[process_smalltalk_reply] ❌ Error in continue_smalltalk: {e}")
+            import traceback
+            traceback.print_exc()
+            # Fallback: transition to interview
+            self.smalltalk_completed = True
+            first_q = self._get_first_interview_question()
+            return f"Thanks! Let's get started with the interview.\n\n{first_q}", False, False
 
-        Candidate's Response: {user_response}
-        """
-        check_response = openai_client.chat.completions.create(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": clarification_prompt}],
-            temperature=0
-        )
-        return 'yes' in check_response.choices[0].message.content.lower()
+    def _get_first_interview_question(self) -> str:
+        """Get the first interview question (resume-based)"""
+        print(f"[_get_first_interview_question] QSE_AVAILABLE: {QSE_AVAILABLE}, Question pool size: {len(self.scored_question_pool)}")
+        
+        if not QSE_AVAILABLE:
+            fallback_q = "Tell me about yourself and your experience."
+            print(f"[_get_first_interview_question] Using fallback question: {fallback_q}")
+            self.current_question = fallback_q
+            self.asked_questions.add(fallback_q)
+            self.interview_data.append({
+                "question": fallback_q,
+                "answer": None,
+                "evaluation": None
+            })
+            self.total_main_questions_asked += 1
+            return fallback_q
+        
+        # Check if we have questions in the pool
+        if not self.scored_question_pool:
+            print("[_get_first_interview_question] ⚠️ Warning: No questions in pool, using fallback")
+            fallback_q = "Tell me about a recent project you worked on."
+            self.current_question = fallback_q
+            self.asked_questions.add(fallback_q)
+            self.interview_data.append({
+                "question": fallback_q,
+                "answer": None,
+                "evaluation": None
+            })
+            self.total_main_questions_asked += 1
+            return fallback_q
+        
+        # Use orchestrator function
+        try:
+            rag_questions = [q.get("question", "") if isinstance(q, dict) else str(q) for q in self.scored_question_pool[:5]]
+            print(f"[_get_first_interview_question] Using {len(rag_questions)} questions from pool for first question generation")
+            first_q = get_first_interview_question(self.qse_parsed_resume, rag_questions)
+            self.current_question = normalize_question(first_q)
+            self.asked_questions.add(self.current_question)
+            
+            # Add to interview data
+            self.interview_data.append({
+                "question": self.current_question,
+                "answer": None,
+                "evaluation": None
+            })
+            self.total_main_questions_asked += 1
+            
+            print(f"[_get_first_interview_question] ✅ First question: {self.current_question[:100]}...")
+            return self.current_question
+        except Exception as e:
+            print(f"[_get_first_interview_question] ❌ Error getting first question: {e}")
+            import traceback
+            traceback.print_exc()
+            # Fallback
+            fallback_q = "Tell me about yourself and your experience."
+            self.current_question = fallback_q
+            self.asked_questions.add(fallback_q)
+            self.interview_data.append({
+                "question": fallback_q,
+                "answer": None,
+                "evaluation": None
+            })
+            self.total_main_questions_asked += 1
+            return fallback_q
 
-    def rephrase_current_question(self):
-        rephrase_prompt = f"""
-        You are an AI assistant helping candidates understand interview questions.
-
-        Task:
-        - Rephrase the following question to make it simpler and easier to understand.
-        - Use shorter sentences if needed.
-        - If the question involves multiple parts, break it into bullet points.
-        - Optionally, add a tiny 1-line hint if you think the candidate may still struggle.
-
-        Important: Always rephrase. Even if the question is already clear, still rewrite it in a different way.
-
-        Original Question:
-        {self.current_question}
-        """
-
-        response = openai_client.chat.completions.create(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": rephrase_prompt}],
-            temperature=0.5  # slight randomness to force rephrasing
-        )
-        self.current_question = response.choices[0].message.content.strip()
-        return self.current_question
-
+    def _get_next_question_from_pool(self) -> Optional[str]:
+        """Helper to get next question from pool without updating state (for skipped questions)"""
+        if not QSE_AVAILABLE or not self.scored_question_pool:
+            return None
+        
+        try:
+            previous_q = self.current_question if self.current_question else ""
+            next_q = get_next_diverse_question(
+                question_pool=self.scored_question_pool,
+                asked_set=self.asked_questions,
+                previous_question=previous_q,
+                similarity_threshold=0.80
+            )
+            
+            if next_q:
+                # Update state
+                self.current_question = next_q
+                self.asked_questions.add(next_q)
+                self.interview_data.append({
+                    "question": next_q,
+                    "answer": None,
+                    "evaluation": None
+                })
+                self.total_main_questions_asked += 1
+                self.follow_up_count = 0
+                return next_q
+            return None
+        except Exception as e:
+            print(f"[_get_next_question_from_pool] Error: {e}")
+            return None
 
     def evaluate_answer(self, answer, question=None):
         """Evaluate a single answer using the evaluation engine"""
         # Use the evaluation engine for a single question
         interview_payload = {
             "interview_id": f"session_{id(self)}",
-            "candidate_name": self.personal_profile.get("name", "Candidate"),
+            "candidate_name": self.candidate_name,
             "questions": [{
                 "id": self.current_question_idx + 1,
                 "question": question if question else self.current_question,
@@ -553,153 +482,192 @@ class InterviewSession:
         # Format feedback using evaluation engine helper
         return format_answer_evaluation_feedback(evaluation_result)
 
-    def handle_unknown_answer(self, answer):
-        """When candidate says they don't know, produce a short hint and a simpler follow-up question."""
-        prompt = f"""
-You are an empathetic technical interviewer helping a candidate who says they don't know the answer.
-Task: Provide a concise, 1-2 sentence hint that guides the candidate how to think about the problem (no spoilers or full solution), then provide one simpler follow-up question they can attempt. Format exactly as:
-HINT: <hint text>
-FOLLOWUP: <follow-up question?>
-
-Candidate's raw reply: {answer}
-"""
-
-        try:
-            resp = openai_client.chat.completions.create(
-                model="gpt-4o",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.4
-            )
-            text = resp.choices[0].message.content.strip()
-            # Extract lines
-            hint = None
-            follow = None
-            for line in text.splitlines():
-                if line.strip().lower().startswith('hint:'):
-                    hint = line.split(':', 1)[1].strip()
-                if line.strip().lower().startswith('followup:') or line.strip().lower().startswith('follow-up:'):
-                    follow = line.split(':', 1)[1].strip()
-
-            if not hint:
-                # fallback: first paragraph
-                hint = text.split('\n\n')[0].strip()
-            if not follow:
-                # fallback: last line
-                follow = text.splitlines()[-1].strip()
-
-            return hint, follow
-        except Exception as e:
-            print(f"Error generating hint/followup: {e}")
-            return ("Try breaking the problem into smaller steps.", "Can you describe the first step you would take?")
-
     def add_answer(self, answer):
-        if self.is_clarification_request(answer):
-            clarification_response = self.rephrase_current_question()
-            return clarification_response, "Question clarified."
-
-        # Save the raw answer
+        """Process user answer and determine next action"""
+        # If still in small talk phase (shouldn't happen if views.py handles it correctly)
+        if not self.smalltalk_completed:
+            print(f"[add_answer] ⚠️ WARNING: add_answer called while smalltalk not completed! This should be handled by views.py")
+            print(f"[add_answer] Processing smalltalk reply from add_answer...")
+            ai_response, terminate, _ = self.process_smalltalk_reply(answer)
+            if terminate:
+                return ai_response, "Interview terminated."
+            if not self.smalltalk_completed:
+                return ai_response, "Small talk continued."
+            # If smalltalk completed here, fall through to interview phase
+            print(f"[add_answer] Smalltalk completed after processing, continuing to interview phase")
+        
+        # Now in interview phase - handle answer to current question
+        if not self.current_question:
+            # Shouldn't happen, but handle gracefully
+            self._get_first_interview_question()
+        
+        # Classify answer behavior using orchestrator
+        if QSE_AVAILABLE:
+            behavior = classify_answer_behavior(self.current_question, answer)
+            print(f"[add_answer] Answer behavior classified as: {behavior}")
+            
+            # Handle clarification requests
+            if behavior == "clarification_request":
+                clarified_q = clarify_question(self.current_question)
+                self.current_question = clarified_q
+                self.interview_data[self.current_question_idx]["question"] = clarified_q
+                return clarified_q, "Question clarified."
+            
+            # Handle off-topic/injection responses with warning system
+            if behavior == "off_topic_or_injection":
+                self.off_topic_strikes += 1
+                print(f"[add_answer] Off-topic/injection detected. Strike count: {self.off_topic_strikes}")
+                
+                if self.off_topic_strikes == 1:
+                    # First strike: give warning and re-ask the same question
+                    warning_msg = (
+                        "I'd appreciate if we keep the discussion focused on the interview questions. "
+                        "Let's try that again.\n\n"
+                        f"{self.current_question}"
+                    )
+                    print(f"[add_answer] First strike - giving warning and re-asking question: {warning_msg}")
+                    # Don't save answer, don't increment question idx - re-ask same question
+                    return warning_msg, "Off-topic warning, re-asking question."
+                else:
+                    # Second strike: end interview
+                    ending_msg = (
+                        "It seems we're not staying on track, so I'll end the interview here. "
+                        "Thank you for your time."
+                    )
+                    print(f"[add_answer] Second strike - ending interview: {ending_msg}")
+                    # Mark question as ended
+                    self.interview_data[self.current_question_idx]["answer"] = answer
+                    self.interview_data[self.current_question_idx]["evaluation"] = "Interview ended due to off-topic/injection behavior"
+                    return ending_msg, "Interview ended."
+            
+            # Handle "don't know" responses
+            if behavior == "dont_know":
+                # Get transition phrase and next question
+                if QSE_AVAILABLE:
+                    transition = transition_phrase("next_topic")
+                else:
+                    transition = "That's alright! Let's move on to something else."
+                
+                # Mark this question as skipped
+                self.interview_data[self.current_question_idx]["answer"] = answer
+                self.interview_data[self.current_question_idx]["evaluation"] = "Skipped - candidate indicated they didn't know"
+                self.current_question_idx += 1
+                self.follow_up_count = 0
+                
+                # Get next question
+                next_q = self._get_next_question_from_pool()
+                if next_q:
+                    combined_response = f"{transition}\n\n{next_q}"
+                    return combined_response, "Question skipped, next question provided."
+                else:
+                    return transition, "Question skipped."
+        
+        # Save the answer to the current question
         self.interview_data[self.current_question_idx]["answer"] = answer
-
-        # Add the assistant question and user's answer to the conversation messages so follow-up generation sees them
-        try:
-            self.messages.append({"role": "assistant", "content": self.current_question})
-            self.messages.append({"role": "user", "content": answer})
-        except Exception:
-            pass
-
-        # Detect explicit 'I don't know' type responses (simple heuristics)
-        low = answer.strip().lower()
-        unknown_indicators = ["don't know", "dont know", "idk", "not sure", "no idea", "i'm not sure", "i am not sure"]
-        if any(ind in low for ind in unknown_indicators):
-            # Provide a hint and a simpler follow-up question instead of marking this answer final
-            hint, follow = self.handle_unknown_answer(answer)
-            # Store a brief evaluation note
-            self.interview_data[self.current_question_idx]["evaluation"] = f"Candidate indicated they didn't know. Provided hint: {hint}"
-
-            # Set follow-up as the current question and append a slot
-            self.current_question = follow
-            self.interview_data.append({"question": follow, "answer": None, "evaluation": None})
-            self.total_questions_asked += 1
-
-            # Do not increment current_question_idx so the original question remains accessible
-            return hint, "Hint provided, follow-up question asked."
-
-        # Otherwise: Evaluate normally
-        evaluation_feedback = self.evaluate_answer(answer, self.current_question)
-        self.interview_data[self.current_question_idx]["evaluation"] = evaluation_feedback
-
-        # Move pointer forward after saving answer
-        self.current_question_idx += 1
-
-        return evaluation_feedback, "Answer recorded and evaluated."
-
-
-    def should_ask_follow_up(self, user_response):
-        follow_up_check_prompt = f"Was the candidate's answer complete and clear? Answer with 'yes' or 'no'.\nCandidate's answer: {user_response}"
-        check_response = openai_client.chat.completions.create(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": follow_up_check_prompt}],
-            temperature=0
-        )
-        return 'no' in check_response.choices[0].message.content.lower()
+        print(f"[add_answer] Saved answer to question idx {self.current_question_idx}: {self.current_question[:100] if self.current_question else 'None'}...")
+        
+        # Check if we need a follow-up
+        needs_follow = False
+        if QSE_AVAILABLE and self.follow_up_count < self.max_followups_per_question:
+            needs_follow = needs_followup(answer, self.current_question)
+            print(f"[add_answer] Follow-up needed: {needs_follow}, follow_up_count: {self.follow_up_count}")
+        
+        if needs_follow:
+            # Generate follow-up question
+            print(f"[add_answer] Generating follow-up question...")
+            followup_q = generate_followup_question(answer, self.current_question)
+            self.follow_up_count += 1
+            
+            # Evaluate the current answer first (proper evaluation)
+            evaluation_feedback = self.evaluate_answer(answer, self.current_question)
+            self.interview_data[self.current_question_idx]["evaluation"] = evaluation_feedback
+            
+            # Add follow-up question as a new entry
+            self.current_question_idx += 1  # Move to next slot for follow-up
+            self.current_question = followup_q
+            self.interview_data.append({
+                "question": followup_q,
+                "answer": None,
+                "evaluation": None
+            })
+            
+            print(f"[add_answer] ✅ Follow-up question added at idx {self.current_question_idx}: {followup_q[:100]}...")
+            return followup_q, "Follow-up question asked."
+        else:
+            # Evaluate the answer
+            evaluation_feedback = self.evaluate_answer(answer, self.current_question)
+            self.interview_data[self.current_question_idx]["evaluation"] = evaluation_feedback
+            self.current_question_idx += 1  # Move to next question slot
+            self.follow_up_count = 0  # Reset follow-up count for next question
+            
+            print(f"[add_answer] Answer evaluated, moving to next question. New idx: {self.current_question_idx}")
+            return evaluation_feedback, "Answer recorded and evaluated."
 
     def next_question(self, interview_type="general"):
-        if self.total_questions_asked >= 5:
+        """Get the next question from the pool"""
+        # Check if we've reached max questions
+        if self.total_main_questions_asked >= self.max_main_questions:
             return "We've reached the end of your interview. Thank you for your time!"
 
-        # Add last assistant/user interaction to memory
-        if self.current_question_idx > 0:
-            last_q = self.interview_data[self.current_question_idx - 1]
-            if last_q["answer"]:
-                self.messages.append({"role": "assistant", "content": last_q["question"]})
-                self.messages.append({"role": "user", "content": last_q["answer"]})
-
-        if self.follow_up_count < 3 and self.should_ask_follow_up(self.interview_data[self.current_question_idx - 1]["answer"]):
-            next_q = generate_dynamic_question(self.messages.copy(), self.interview_data[self.current_question_idx - 1]["answer"], self.personal_profile, interview_type)
-            self.follow_up_count += 1
-        else:
-            next_q, _ = generate_initial_question(self.structured_resume, self.structured_jd)
+        # If no current question, get first one
+        if not self.current_question:
+            if not self.smalltalk_completed:
+                return "Please complete the initial conversation first."
+            self._get_first_interview_question()
+            return self.current_question
+        
+        # Get next diverse question from pool
+        if QSE_AVAILABLE and self.scored_question_pool:
+            previous_q = self.current_question
+            next_q = get_next_diverse_question(
+                question_pool=self.scored_question_pool,
+                asked_set=self.asked_questions,
+                previous_question=previous_q,
+                similarity_threshold=0.80
+            )
+            
+            if not next_q:
+                return "We've reached the end of your interview. Thank you for your time!"
+            
+            self.current_question = next_q
+            self.asked_questions.add(next_q)
+            self.interview_data.append({
+                "question": next_q,
+                "answer": None,
+                "evaluation": None
+            })
+            self.total_main_questions_asked += 1
             self.follow_up_count = 0
 
-        # Set current question
-        self.current_question = next_q
-
-        # Append new question slot to interview_data
-        self.interview_data.append({"question": next_q, "answer": None, "evaluation": None})
-
-        self.total_questions_asked += 1
-        self.messages = self.messages[-7:]  # Keep context short
-
-        return next_q
-
-
-
-    def generate_per_question_feedback(self):
-        feedbacks = []
-        for idx, entry in enumerate(self.interview_data):
-            if entry["answer"] and entry["evaluation"]:
-                feedbacks.append(f"Feedback for Question {idx+1}:\n{entry['evaluation']}\n")
-        return "\n".join(feedbacks)
+            return next_q
+        else:
+            # Fallback
+            return "We've completed all available questions. Thank you for your time!"
 
     def get_interview_summary(self):
         """Generate comprehensive interview summary using the evaluation engine"""
-        # Prepare questions for evaluation
+        # Prepare questions for evaluation (exclude small talk, only technical questions)
         questions_for_eval = []
-        for idx, q_data in enumerate(self.interview_data):
-            if q_data.get("answer"):  # Only include answered questions
+        question_id = 1
+        for q_data in self.interview_data:
+            if q_data.get("answer") and q_data.get("answer") != "":  # Only include answered questions
                 questions_for_eval.append({
-                    "id": idx + 1,
+                    "id": question_id,
                     "question": q_data["question"],
                     "answer": q_data["answer"],
-                    "is_icebreaker": idx < 2,  # First 2 questions are icebreakers
+                    "is_icebreaker": False,  # Small talk is separate, all interview questions are technical
                 })
+                question_id += 1
+        
+        if not questions_for_eval:
+            return "No interview questions were answered."
         
         # Get comprehensive evaluation
         interview_payload = {
             "interview_id": f"session_{id(self)}",
-            "candidate_name": self.personal_profile.get("name", "Candidate"),
+            "candidate_name": self.candidate_name,
             "questions": questions_for_eval,
-            "icebreaker_count": 2,
+            "icebreaker_count": 0,  # Small talk is not included in evaluation
         }
         
         evaluation_result = evaluate_interview_json(interview_payload, use_llm=True)
@@ -709,3 +677,8 @@ Candidate's raw reply: {answer}
         
         # Format summary using evaluation engine helper
         return format_interview_summary(evaluation_result)
+    
+    @property
+    def total_questions_asked(self):
+        """Compatibility property for views.py"""
+        return self.total_main_questions_asked
