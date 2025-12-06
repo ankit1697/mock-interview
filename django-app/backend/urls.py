@@ -15,5 +15,7 @@ urlpatterns = [
     path('interview/upload-video/<int:completed_id>/', upload_interview_video, name='upload_interview_video'),
     # Ephemeral realtime session (server issues short-lived credentials)
     path('realtime/session/', create_realtime_session, name='create_realtime_session'),
+    # Direct Google login (bypasses intermediate page)
+    path('accounts/google/login/direct/', direct_google_login, name='direct_google_login'),
 
 ]

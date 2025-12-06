@@ -17,6 +17,7 @@ from .script import InterviewSession
 import requests
 from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required
+from allauth.socialaccount.providers.google.views import oauth2_login
 
 
 # Minimal endpoint to create an ephemeral realtime session/token with OpenAI
@@ -52,6 +53,10 @@ def create_realtime_session(request):
 
 def login_view(request):
 	return render(request, 'login.html')
+
+def direct_google_login(request):
+	"""Direct redirect to Google OAuth, bypassing intermediate page"""
+	return oauth2_login(request)
 
 def index(request):
 	return render(request, 'index.html')
@@ -240,8 +245,12 @@ def interview_chat(request, interview_id):
         resume = interview.resume
         job_description_text = interview.job_description or "N/A"
         company = interview.company or "N/A"
-        session = InterviewSession(resume, job_description_text, company)
+        # Use getattr with defaults in case role/industry fields don't exist yet
+        role = getattr(interview, 'role', None) or "Data Scientist"
+        industry = getattr(interview, 'industry', None) or "Technology"
+        session = InterviewSession(resume, job_description_text, company, role=role, industry=industry)
         active_sessions[session_key] = session
+        session.initial_greeting_sent = False  # Initialize flag
 
     if request.method == "POST":
         # Handle audio input
@@ -302,30 +311,179 @@ def interview_chat(request, interview_id):
                 "completed_id": completed_interview.id
             })
 
-        if not user_message:
-            return JsonResponse({"response": "Please enter a valid message."})
-
-        if session.total_questions_asked == 0 and session.current_question is None:
-            greeting_and_first_q = session.start_interview()
-            audio_response = text_to_speech(greeting_and_first_q)
+        # Check if we need to send the initial greeting (first request, no user message yet)
+        if not hasattr(session, 'initial_greeting_sent'):
+            session.initial_greeting_sent = False
+        
+        # Handle "__start__" signal from frontend or empty message as trigger to start interview
+        if (not user_message or user_message == "__start__") and not session.initial_greeting_sent:
+            print("[interview_chat] Starting interview with initial greeting (first request, __start__ signal or empty message)")
+            greeting = session.start_interview()
+            session.initial_greeting_sent = True  # Set flag after sending greeting
+            audio_response = text_to_speech(greeting)
             return JsonResponse({
                 "transcript": "",  # No user message for initial greeting
-                "response": greeting_and_first_q,
+                "response": greeting,
                 "audio": audio_response
             })
+        
+        if not user_message or user_message == "__start__":
+            print("[interview_chat] ⚠️ WARNING: user_message is empty or __start__, but greeting already sent!")
+            return JsonResponse({"response": "Please enter a valid message."})
+        
+        # Handle small talk phase
+        if not session.smalltalk_completed:
+            print(f"[interview_chat] Processing small talk reply. user_message: {user_message[:100]}")
+            print(f"[interview_chat] smalltalk_completed before: {session.smalltalk_completed}")
+            print(f"[interview_chat] smalltalk_turn_count: {session.smalltalk_turn_count}, user_replies: {session.smalltalk_user_replies}")
+            
+            ai_response, terminate, _ = session.process_smalltalk_reply(user_message)
+            
+            print(f"[interview_chat] smalltalk_completed after: {session.smalltalk_completed}")
+            print(f"[interview_chat] ai_response preview: {ai_response[:150]}")
+            
+            if terminate:
+                # Interview terminated during small talk
+                print("[interview_chat] Interview terminated during small talk")
+                overall_summary = "Interview terminated during initial conversation."
+                completed_interview = CompletedInterview.objects.create(
+                    interview=interview,
+                    user=request.user,
+                    transcript=json.dumps(session.interview_data, indent=2),
+                    summary=overall_summary,
+                    evaluation_results={},
+                    overall_score=0.0,
+                )
+                active_sessions.pop(session_key, None)
+                audio_response = text_to_speech(ai_response)
+                return JsonResponse({
+                    "transcript": user_message,
+                    "response": ai_response,
+                    "audio": audio_response,
+                    "completed_id": completed_interview.id
+                })
+            
+            # Continue small talk or transition to interview
+            if session.smalltalk_completed:
+                # Transition message already included in ai_response (should contain first question)
+                print("[interview_chat] ✅ Small talk completed, transitioning to interview")
+                print(f"[interview_chat] Current question: {session.current_question}")
+                audio_response = text_to_speech(ai_response)
+                return JsonResponse({
+                    "transcript": user_message,
+                    "response": ai_response,
+                    "audio": audio_response
+                })
+            else:
+                # Still in small talk
+                print("[interview_chat] Still in small talk, continuing conversation")
+                audio_response = text_to_speech(ai_response)
+                return JsonResponse({
+                    "transcript": user_message,
+                    "response": ai_response,
+                    "audio": audio_response
+                })
 
-        # First: Add user's answer
+        # First: Add user's answer (now in interview phase)
+        print(f"[interview_chat] Processing interview phase answer. user_message: {user_message[:100]}")
+        print(f"[interview_chat] Current question: {session.current_question}")
+        print(f"[interview_chat] Current question idx: {session.current_question_idx}")
         feedback_or_next_question, note = session.add_answer(user_message)
+        print(f"[interview_chat] add_answer returned - note: '{note}', response preview: {feedback_or_next_question[:150]}")
 
         if note == "Question clarified.":
+            print(f"[interview_chat] ✅ Handling Question clarified - returning immediately")
             audio_response = text_to_speech(feedback_or_next_question)
             return JsonResponse({
                 "transcript": user_message,  # Include user's transcript
                 "response": feedback_or_next_question,
                 "audio": audio_response
             })
+        
+        # Handle off-topic warning - show warning and re-ask same question
+        if note == "Off-topic warning, re-asking question.":
+            print(f"[interview_chat] ✅ Handling Off-topic warning - returning warning message")
+            audio_response = text_to_speech(feedback_or_next_question)
+            return JsonResponse({
+                "transcript": user_message,
+                "response": feedback_or_next_question,
+                "audio": audio_response
+            })
+        
+        # Handle interview ended due to off-topic behavior
+        if note == "Interview ended.":
+            print(f"[interview_chat] ✅ Interview ended due to off-topic behavior")
+            
+            # Save the interview data even though it ended early
+            if session.interview_data[-1]["answer"] is None:
+                session.interview_data[-1]["answer"] = user_message
+                session.interview_data[-1]["evaluation"] = feedback_or_next_question
+            
+            # Get summary and scores (may be limited due to early end)
+            try:
+                overall_summary = session.get_interview_summary()
+                score_data = _compute_dimension_averages(session.full_evaluation)
+            except Exception as e:
+                print(f"[interview_chat] Warning: Could not generate summary for early-ended interview: {e}")
+                overall_summary = "Interview ended early due to off-topic behavior."
+                score_data = {
+                    "overall_score": None,
+                    "technical_reasoning_avg": None,
+                    "accuracy_avg": None,
+                    "confidence_avg": None,
+                    "problem_solving_avg": None,
+                    "flow_avg": None,
+                }
+            
+            # Create completed interview record
+            completed_interview = CompletedInterview.objects.create(
+                interview=interview,
+                user=request.user,
+                transcript=json.dumps(session.interview_data, indent=2),
+                summary=overall_summary,
+                evaluation_results=session.full_evaluation if session.full_evaluation else {},
+                overall_score=score_data["overall_score"],
+                technical_reasoning_avg=score_data["technical_reasoning_avg"],
+                accuracy_avg=score_data["accuracy_avg"],
+                confidence_avg=score_data["confidence_avg"],
+                problem_solving_avg=score_data["problem_solving_avg"],
+                flow_avg=score_data["flow_avg"],
+            )
+            
+            # Clean up session
+            active_sessions.pop(session_key, None)
+            
+            audio_response = text_to_speech(feedback_or_next_question)
+            return JsonResponse({
+                "transcript": user_message,
+                "response": feedback_or_next_question,
+                "audio": audio_response,
+                "interview_ended": True,
+                "completed_id": completed_interview.id  # Include completed_id so frontend can redirect
+            })
+        
+        # Handle skipped questions - show transition message and next question (if provided)
+        if note == "Question skipped." or note == "Question skipped, next question provided.":
+            print(f"[interview_chat] ✅ Handling Question skipped - note: '{note}', returning transition message immediately")
+            print(f"[interview_chat] Full response: {feedback_or_next_question}")
+            audio_response = text_to_speech(feedback_or_next_question)
+            return JsonResponse({
+                "transcript": user_message,
+                "response": feedback_or_next_question,
+                "audio": audio_response
+            })
+        
+        # Handle follow-up questions - return them immediately without calling next_question()
+        if note == "Follow-up question asked.":
+            print(f"[interview_chat] Follow-up question generated: {feedback_or_next_question[:150]}")
+            audio_response = text_to_speech(feedback_or_next_question)
+            return JsonResponse({
+                "transcript": user_message,
+                "response": feedback_or_next_question,
+                "audio": audio_response
+            })
 
-        # Handle moving to next step
+        # Handle moving to next step (only if not a follow-up or skip)
         next_question = session.next_question()
         audio_response = text_to_speech(next_question)
 
@@ -630,85 +788,3 @@ def upload_interview_video(request, completed_id):
     except Exception as e:
         print(f"Error uploading video: {str(e)}")
         return JsonResponse({"error": f"Error saving video: {str(e)}"}, status=500)
-
-
-##################### OLD WORKING LOGIC #######################
-
-# openai.api_key = os.getenv("OPENAI_API_KEY")
-
-# chat_history_store = {}
-# side_questions_store = {}
-
-# def extract_text_from_pdf(path):
-# 	reader = PdfReader(path)
-# 	return "\n".join([page.extract_text() or "" for page in reader.pages])
-
-# @login_required
-# @csrf_exempt
-# def interview_chat(request, interview_id):
-# 	interview = get_object_or_404(Interview, id=interview_id, user=request.user)
-# 	resume_path = interview.resume.file.path
-# 	resume_text = extract_text_from_pdf(resume_path)
-# 	job_description = interview.job_description or "N/A"
-
-# 	chat_key = f"chat_{request.user.id}_{interview_id}"
-# 	chat_history = chat_history_store.get(chat_key, [])
-# 	side_questions = side_questions_store.get(chat_key, [])
-
-# 	if request.method == "POST":
-# 		message = request.POST.get("message")
-
-# 		# If it's the first user message
-# 		if len(chat_history) == 0:
-# 			# Inject system + initial prompt
-# 			chat_history.append({"role": "system", "content": "You are an expert AI interviewer for data science roles. Start with a friendly greeting, and then begin the interview."})
-# 			chat_history.append({"role": "user", "content": f"Begin the interview based on the following resume and job description. Generate exactly 1 concise and thoughtful interview question. Do not include any explanations.\n\nResume:\n{resume_text}\n\nJob Description:\n{job_description}"})
-
-# 			response = openai.ChatCompletion.create(
-# 				model="gpt-4o",
-# 				messages=chat_history
-# 			)
-# 			initial_question = response.choices[0].message.content.strip()
-# 			chat_history.append({"role": "assistant", "content": initial_question})
-
-# 			# Generate follow-up questions (store them separately)
-# 			chat_history.append({"role": "user", "content": "Generate 3 follow-up questions based on the initial question. Return them as a numbered list with no additional explanation."})
-# 			followup = openai.ChatCompletion.create(
-# 				model="gpt-4o",
-# 				messages=chat_history
-# 			)
-# 			raw_followups = followup.choices[0].message.content.strip().split('\n')
-# 			side_questions = [
-# 				line.strip().split('. ', 1)[-1] for line in raw_followups if line.strip() and '.' in line
-# 			]
-
-# 			chat_history_store[chat_key] = chat_history
-# 			side_questions_store[chat_key] = side_questions
-
-# 			return JsonResponse({"response": initial_question})
-
-# 		# Continue conversation
-# 		chat_history.append({"role": "user", "content": message})
-
-# 		# Load follow-up queue
-# 		side_questions = side_questions_store.get(chat_key, [])
-# 		if side_questions:
-# 			next_q = side_questions.pop(0)
-# 			chat_history.append({"role": "assistant", "content": next_q})
-
-# 			chat_history_store[chat_key] = chat_history
-# 			side_questions_store[chat_key] = side_questions
-
-# 			return JsonResponse({"response": next_q})
-# 		else:
-# 			closing_message = "Thanks for answering all the questions! The interview is now complete."
-# 			chat_history.append({"role": "assistant", "content": closing_message})
-# 			chat_history_store[chat_key] = chat_history
-# 			CompletedInterview.objects.create(
-# 				interview=interview,
-# 				user=request.user,
-# 				transcript=json.dumps(chat_history, indent=2)
-# 			)
-# 			return JsonResponse({"response": closing_message})
-
-# 	return render(request, "interview_chat.html", {"interview": interview})

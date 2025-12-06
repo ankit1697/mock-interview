@@ -29,7 +29,7 @@
         <a href="{% url 'profile' %}" class="nav-link text-lg">Profile</a>
         <a href="{% url 'account_logout' %}" class="nav-link text-lg">Logout</a>
       {% else %}
-        <a href="/accounts/google/login/?process=login&next=/" class="btn-main text-black px-4 py-2 rounded text-lg">Login with Google</a>
+        <a href="{% url 'direct_google_login' %}" class="btn-main text-black px-4 py-2 rounded text-lg">Login with Google</a>
       {% endif %}
     </div>
       </div>
